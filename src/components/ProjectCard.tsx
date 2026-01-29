@@ -1,15 +1,46 @@
 import { ArrowRight } from "lucide-react";
 
-interface ProjectCardProps {
+export interface Project {
   title: string;
   year: string;
   branch: string;
   tags: string[];
   description: string;
-  index: number;
+  fullDescription?: string;
+  methodology?: string;
+  outcomes?: string;
 }
 
-const ProjectCard = ({ title, year, branch, tags, description, index }: ProjectCardProps) => {
+interface ProjectCardProps extends Project {
+  index: number;
+  onViewDetails: (project: Project) => void;
+}
+
+const ProjectCard = ({ 
+  title, 
+  year, 
+  branch, 
+  tags, 
+  description, 
+  fullDescription,
+  methodology,
+  outcomes,
+  index,
+  onViewDetails 
+}: ProjectCardProps) => {
+  const handleViewDetails = () => {
+    onViewDetails({
+      title,
+      year,
+      branch,
+      tags,
+      description,
+      fullDescription,
+      methodology,
+      outcomes,
+    });
+  };
+
   return (
     <div 
       className={`card-elevated p-6 flex flex-col opacity-0 animate-fade-in-up stagger-${Math.min(index + 1, 6)}`}
@@ -44,7 +75,10 @@ const ProjectCard = ({ title, year, branch, tags, description, index }: ProjectC
       </p>
 
       {/* CTA Button */}
-      <button className="btn-primary w-full group">
+      <button 
+        onClick={handleViewDetails}
+        className="btn-primary w-full group"
+      >
         View Details
         <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
       </button>
