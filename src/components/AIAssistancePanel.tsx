@@ -320,7 +320,14 @@ const AIAssistancePanel = () => {
 
           {uploadState.analyzed && !uploadState.uploading && (
             <div className="flex items-center gap-2 text-sm">
-              {uploadState.matches.length > 0 ? (
+              {uploadState.matches.some(m => m.overallMatch >= 95) ? (
+                <>
+                  <AlertCircle className="h-4 w-4 text-destructive" />
+                  <span className="text-destructive font-medium">
+                    Project Already Exists!
+                  </span>
+                </>
+              ) : uploadState.matches.length > 0 ? (
                 <>
                   <CheckCircle2 className="h-4 w-4 text-primary" />
                   <span className="text-primary">
@@ -329,7 +336,7 @@ const AIAssistancePanel = () => {
                 </>
               ) : (
                 <>
-                  <AlertCircle className="h-4 w-4 text-green-500" />
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
                   <span className="text-green-600 dark:text-green-400">No matches - Your project is unique!</span>
                 </>
               )}
@@ -349,6 +356,19 @@ const AIAssistancePanel = () => {
         </div>
       ) : uploadState.analyzed && uploadState.matches.length > 0 ? (
         <>
+          {/* Existing Project Alert */}
+          {uploadState.matches.some(m => m.overallMatch >= 95) && (
+            <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertCircle className="h-4 w-4 text-destructive" />
+                <span className="text-sm font-semibold text-destructive">Duplicate Detected</span>
+              </div>
+              <p className="text-xs text-destructive/80">
+                This project already exists in the database with 100% match. See the detailed report below.
+              </p>
+            </div>
+          )}
+
           {/* Tab Switcher */}
           <div className="flex gap-1 mb-4 p-1 bg-muted rounded-lg">
             <button
@@ -374,15 +394,20 @@ const AIAssistancePanel = () => {
               <h4 className="text-sm font-medium text-foreground">Abstract Similarity</h4>
               {uploadState.matches.filter(m => m.breakdown.abstract > 0).length > 0 ? (
                 uploadState.matches.map((project) => (
-                  <div key={project.title} className="p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                  <div key={project.title} className={`p-3 rounded-lg transition-colors ${
+                    project.overallMatch >= 95 ? "bg-destructive/10 border border-destructive/20" : "bg-muted/50 hover:bg-muted"
+                  }`}>
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <p className="text-sm font-medium text-foreground">{project.title}</p>
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${getMatchColor(project.breakdown.abstract)}`}>
-                        {project.breakdown.abstract}%
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        project.overallMatch >= 95 ? "bg-destructive text-destructive-foreground" : getMatchColor(project.breakdown.abstract)
+                      }`}>
+                        {project.overallMatch >= 95 ? "100%" : `${project.breakdown.abstract}%`}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {project.breakdown.abstract >= 50 ? "High abstract similarity detected" :
+                      {project.overallMatch >= 95 ? "⚠️ Exact match - Project already exists!" :
+                       project.breakdown.abstract >= 50 ? "High abstract similarity detected" :
                        project.breakdown.abstract >= 30 ? "Moderate content overlap" : "Low similarity"}
                     </p>
                   </div>
@@ -397,35 +422,80 @@ const AIAssistancePanel = () => {
             <div className="space-y-4">
               <h4 className="text-sm font-medium text-foreground">Detailed Similarity Report</h4>
               {uploadState.matches.map((project) => (
-                <div key={project.title} className="p-4 rounded-lg bg-muted/50 border border-border">
+                <div key={project.title} className={`p-4 rounded-lg border ${
+                  project.overallMatch >= 95 
+                    ? "bg-destructive/5 border-destructive/30" 
+                    : "bg-muted/50 border-border"
+                }`}>
                   <div className="flex items-start justify-between gap-2 mb-3">
-                    <p className="text-sm font-semibold text-foreground">{project.title}</p>
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${getMatchColor(project.overallMatch)}`}>
-                      {project.overallMatch}% Overall
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{project.title}</p>
+                      {project.overallMatch >= 95 && (
+                        <p className="text-xs text-destructive font-medium mt-0.5">⚠️ Duplicate Project</p>
+                      )}
+                    </div>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${
+                      project.overallMatch >= 95 
+                        ? "bg-destructive text-destructive-foreground" 
+                        : getMatchColor(project.overallMatch)
+                    }`}>
+                      {project.overallMatch >= 95 ? "100%" : `${project.overallMatch}%`} Overall
                     </span>
                   </div>
                   
-                  {/* Breakdown */}
+                  {/* Breakdown with visual bars */}
                   <div className="space-y-2 mb-3">
                     <div className="flex items-center gap-2">
                       <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground flex-1">Abstract</span>
-                      <span className="text-xs font-medium">{project.breakdown.abstract}%</span>
+                      <span className="text-xs text-muted-foreground w-20">Abstract</span>
+                      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all ${project.overallMatch >= 95 ? "bg-destructive" : "bg-primary"}`}
+                          style={{ width: `${project.overallMatch >= 95 ? 100 : project.breakdown.abstract}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium w-10 text-right">
+                        {project.overallMatch >= 95 ? "100%" : `${project.breakdown.abstract}%`}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Tag className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground flex-1">Keywords</span>
-                      <span className="text-xs font-medium">{project.breakdown.keywords}%</span>
+                      <span className="text-xs text-muted-foreground w-20">Keywords</span>
+                      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all ${project.overallMatch >= 95 ? "bg-destructive" : "bg-primary"}`}
+                          style={{ width: `${project.overallMatch >= 95 ? 100 : project.breakdown.keywords}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium w-10 text-right">
+                        {project.overallMatch >= 95 ? "100%" : `${project.breakdown.keywords}%`}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Palette className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground flex-1">Design</span>
-                      <span className="text-xs font-medium">{project.breakdown.design}%</span>
+                      <span className="text-xs text-muted-foreground w-20">Design</span>
+                      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all ${project.overallMatch >= 95 ? "bg-destructive" : "bg-primary"}`}
+                          style={{ width: `${project.overallMatch >= 95 ? 100 : project.breakdown.design}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium w-10 text-right">
+                        {project.overallMatch >= 95 ? "100%" : `${project.breakdown.design}%`}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Code2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground flex-1">Technologies</span>
-                      <span className="text-xs font-medium">{project.breakdown.technologies}%</span>
+                      <span className="text-xs text-muted-foreground w-20">Technologies</span>
+                      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all ${project.overallMatch >= 95 ? "bg-destructive" : "bg-primary"}`}
+                          style={{ width: `${project.overallMatch >= 95 ? 100 : project.breakdown.technologies}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium w-10 text-right">
+                        {project.overallMatch >= 95 ? "100%" : `${project.breakdown.technologies}%`}
+                      </span>
                     </div>
                   </div>
 
@@ -437,7 +507,9 @@ const AIAssistancePanel = () => {
                           <p className="text-xs text-muted-foreground mb-1">Matched Keywords:</p>
                           <div className="flex flex-wrap gap-1">
                             {project.matchedKeywords.map(k => (
-                              <span key={k} className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                              <span key={k} className={`text-xs px-1.5 py-0.5 rounded ${
+                                project.overallMatch >= 95 ? "bg-destructive/20 text-destructive" : "bg-primary/10 text-primary"
+                              }`}>
                                 {k}
                               </span>
                             ))}
@@ -449,7 +521,9 @@ const AIAssistancePanel = () => {
                           <p className="text-xs text-muted-foreground mb-1">Matched Technologies:</p>
                           <div className="flex flex-wrap gap-1">
                             {project.matchedTechnologies.map(t => (
-                              <span key={t} className="text-xs bg-accent/10 text-accent px-1.5 py-0.5 rounded">
+                              <span key={t} className={`text-xs px-1.5 py-0.5 rounded ${
+                                project.overallMatch >= 95 ? "bg-destructive/20 text-destructive" : "bg-accent/10 text-accent"
+                              }`}>
                                 {t}
                               </span>
                             ))}
