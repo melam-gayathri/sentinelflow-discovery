@@ -9,12 +9,28 @@ interface SimilarityBreakdown {
   technologies: number;
 }
 
+interface MatchEvidence {
+  abstractWords: string[];
+  keywords: string[];
+  technologies: string[];
+  designPatterns: string[];
+}
+
 interface MatchResult {
   title: string;
   overallMatch: number;
   breakdown: SimilarityBreakdown;
   matchedKeywords: string[];
   matchedTechnologies: string[];
+  matchedDesignPatterns: string[];
+  matchedAbstractWords: string[];
+  evidence: MatchEvidence;
+  originalProject: {
+    abstract: string;
+    keywords: string[];
+    technologies: string[];
+    designPatterns: string[];
+  };
 }
 
 interface UploadState {
@@ -107,18 +123,24 @@ const getSimulatedDocumentContent = (fileName: string) => {
   };
 };
 
-const calculateSimilarity = (arr1: string[], arr2: string[]): number => {
+const calculateSimilarity = (arr1: string[], arr2: string[]): { score: number; matched: string[] } => {
   const set1 = new Set(arr1.map(s => s.toLowerCase()));
   const set2 = new Set(arr2.map(s => s.toLowerCase()));
   const intersection = [...set1].filter(x => set2.has(x));
   const union = new Set([...set1, ...set2]);
-  return union.size > 0 ? (intersection.length / union.size) * 100 : 0;
+  const score = union.size > 0 ? (intersection.length / union.size) * 100 : 0;
+  // Return original casing from arr1 for matched items
+  const matched = arr1.filter(item => 
+    intersection.includes(item.toLowerCase())
+  );
+  return { score, matched };
 };
 
-const calculateAbstractSimilarity = (abstract1: string, abstract2: string): number => {
-  const words1 = abstract1.toLowerCase().split(/\s+/);
-  const words2 = abstract2.toLowerCase().split(/\s+/);
-  return calculateSimilarity(words1, words2);
+const calculateAbstractSimilarity = (abstract1: string, abstract2: string): { score: number; matchedWords: string[] } => {
+  const words1 = abstract1.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  const words2 = abstract2.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  const { score, matched } = calculateSimilarity(words1, words2);
+  return { score, matchedWords: matched };
 };
 
 const AIAssistancePanel = () => {
@@ -138,33 +160,40 @@ const AIAssistancePanel = () => {
     const docContent = getSimulatedDocumentContent(file.name);
     
     const matches: MatchResult[] = projectDatabase.map(project => {
-      const abstractMatch = calculateAbstractSimilarity(docContent.abstract, project.abstract);
-      const keywordMatch = calculateSimilarity(docContent.keywords, project.keywords);
-      const techMatch = calculateSimilarity(docContent.technologies, project.technologies);
-      const designMatch = calculateSimilarity(docContent.designPatterns, project.designPatterns);
+      const abstractResult = calculateAbstractSimilarity(docContent.abstract, project.abstract);
+      const keywordResult = calculateSimilarity(docContent.keywords, project.keywords);
+      const techResult = calculateSimilarity(docContent.technologies, project.technologies);
+      const designResult = calculateSimilarity(docContent.designPatterns, project.designPatterns);
       
       const overallMatch = Math.round(
-        abstractMatch * 0.4 + keywordMatch * 0.25 + techMatch * 0.2 + designMatch * 0.15
-      );
-      
-      const matchedKeywords = docContent.keywords.filter(k => 
-        project.keywords.some(pk => pk.toLowerCase() === k.toLowerCase())
-      );
-      const matchedTechnologies = docContent.technologies.filter(t =>
-        project.technologies.some(pt => pt.toLowerCase() === t.toLowerCase())
+        abstractResult.score * 0.4 + keywordResult.score * 0.25 + techResult.score * 0.2 + designResult.score * 0.15
       );
       
       return {
         title: project.title,
         overallMatch,
         breakdown: {
-          abstract: Math.round(abstractMatch),
-          keywords: Math.round(keywordMatch),
-          design: Math.round(designMatch),
-          technologies: Math.round(techMatch),
+          abstract: Math.round(abstractResult.score),
+          keywords: Math.round(keywordResult.score),
+          design: Math.round(designResult.score),
+          technologies: Math.round(techResult.score),
         },
-        matchedKeywords,
-        matchedTechnologies,
+        matchedKeywords: keywordResult.matched,
+        matchedTechnologies: techResult.matched,
+        matchedDesignPatterns: designResult.matched,
+        matchedAbstractWords: abstractResult.matchedWords,
+        evidence: {
+          abstractWords: abstractResult.matchedWords,
+          keywords: keywordResult.matched,
+          technologies: techResult.matched,
+          designPatterns: designResult.matched,
+        },
+        originalProject: {
+          abstract: project.abstract,
+          keywords: project.keywords,
+          technologies: project.technologies,
+          designPatterns: project.designPatterns,
+        },
       };
     }).filter(m => m.overallMatch > 20).sort((a, b) => b.overallMatch - a.overallMatch);
     
@@ -499,39 +528,122 @@ const AIAssistancePanel = () => {
                     </div>
                   </div>
 
-                  {/* Matched Items */}
-                  {(project.matchedKeywords.length > 0 || project.matchedTechnologies.length > 0) && (
-                    <div className="pt-2 border-t border-border">
-                      {project.matchedKeywords.length > 0 && (
-                        <div className="mb-2">
-                          <p className="text-xs text-muted-foreground mb-1">Matched Keywords:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {project.matchedKeywords.map(k => (
-                              <span key={k} className={`text-xs px-1.5 py-0.5 rounded ${
-                                project.overallMatch >= 95 ? "bg-destructive/20 text-destructive" : "bg-primary/10 text-primary"
-                              }`}>
-                                {k}
-                              </span>
-                            ))}
-                          </div>
+                  {/* Detailed Match Evidence */}
+                  <div className="pt-3 border-t border-border space-y-3">
+                    {/* Abstract Match Evidence */}
+                    {project.evidence.abstractWords.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <FileText className="h-3 w-3 text-muted-foreground" />
+                          <p className="text-xs font-medium text-foreground">Abstract Match Evidence</p>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ml-auto ${
+                            project.overallMatch >= 95 ? "bg-destructive/20 text-destructive" : "bg-muted text-muted-foreground"
+                          }`}>
+                            {project.evidence.abstractWords.length} words matched
+                          </span>
                         </div>
-                      )}
-                      {project.matchedTechnologies.length > 0 && (
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">Matched Technologies:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {project.matchedTechnologies.map(t => (
-                              <span key={t} className={`text-xs px-1.5 py-0.5 rounded ${
-                                project.overallMatch >= 95 ? "bg-destructive/20 text-destructive" : "bg-accent/10 text-accent"
-                              }`}>
-                                {t}
-                              </span>
-                            ))}
-                          </div>
+                        <div className="flex flex-wrap gap-1">
+                          {project.evidence.abstractWords.map((word, idx) => (
+                            <span key={`${word}-${idx}`} className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${
+                              project.overallMatch >= 95 
+                                ? "bg-destructive/15 text-destructive border border-destructive/30" 
+                                : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                            }`}>
+                              "{word}"
+                            </span>
+                          ))}
                         </div>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    )}
+
+                    {/* Keywords Match Evidence */}
+                    {project.evidence.keywords.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Tag className="h-3 w-3 text-muted-foreground" />
+                          <p className="text-xs font-medium text-foreground">Keyword Match Evidence</p>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ml-auto ${
+                            project.overallMatch >= 95 ? "bg-destructive/20 text-destructive" : "bg-muted text-muted-foreground"
+                          }`}>
+                            {project.evidence.keywords.length}/{project.originalProject.keywords.length} matched
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {project.evidence.keywords.map(k => (
+                            <span key={k} className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${
+                              project.overallMatch >= 95 
+                                ? "bg-destructive/15 text-destructive border border-destructive/30" 
+                                : "bg-primary/10 text-primary"
+                            }`}>
+                              #{k}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Technologies Match Evidence */}
+                    {project.evidence.technologies.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Code2 className="h-3 w-3 text-muted-foreground" />
+                          <p className="text-xs font-medium text-foreground">Technology Match Evidence</p>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ml-auto ${
+                            project.overallMatch >= 95 ? "bg-destructive/20 text-destructive" : "bg-muted text-muted-foreground"
+                          }`}>
+                            {project.evidence.technologies.length}/{project.originalProject.technologies.length} matched
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {project.evidence.technologies.map(t => (
+                            <span key={t} className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${
+                              project.overallMatch >= 95 
+                                ? "bg-destructive/15 text-destructive border border-destructive/30" 
+                                : "bg-accent/10 text-accent"
+                            }`}>
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Design Pattern Match Evidence */}
+                    {project.evidence.designPatterns.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Palette className="h-3 w-3 text-muted-foreground" />
+                          <p className="text-xs font-medium text-foreground">Design Pattern Match Evidence</p>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ml-auto ${
+                            project.overallMatch >= 95 ? "bg-destructive/20 text-destructive" : "bg-muted text-muted-foreground"
+                          }`}>
+                            {project.evidence.designPatterns.length}/{project.originalProject.designPatterns.length} matched
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {project.evidence.designPatterns.map(d => (
+                            <span key={d} className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${
+                              project.overallMatch >= 95 
+                                ? "bg-destructive/15 text-destructive border border-destructive/30" 
+                                : "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
+                            }`}>
+                              {d}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* No matches fallback */}
+                    {project.evidence.abstractWords.length === 0 && 
+                     project.evidence.keywords.length === 0 && 
+                     project.evidence.technologies.length === 0 && 
+                     project.evidence.designPatterns.length === 0 && (
+                      <p className="text-xs text-muted-foreground italic">
+                        No specific match evidence to display.
+                      </p>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
