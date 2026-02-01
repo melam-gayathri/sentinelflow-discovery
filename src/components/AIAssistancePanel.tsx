@@ -165,24 +165,35 @@ const getSimulatedDocumentContent = (fileName: string) => {
   };
 };
 
-const calculateSimilarity = (arr1: string[], arr2: string[]): { score: number; matched: string[] } => {
+const calculateSimilarity = (arr1: string[], arr2: string[]): { score: number; matched: string[]; isExactMatch: boolean } => {
   const set1 = new Set(arr1.map(s => s.toLowerCase()));
   const set2 = new Set(arr2.map(s => s.toLowerCase()));
   const intersection = [...set1].filter(x => set2.has(x));
-  const union = new Set([...set1, ...set2]);
-  const score = union.size > 0 ? (intersection.length / union.size) * 100 : 0;
+  
+  // Check for exact match: all items in uploaded content exist in original AND same count
+  const isExactMatch = set1.size === set2.size && intersection.length === set1.size;
+  
+  // Use exact 100% for identical sets, otherwise use Jaccard similarity
+  let score: number;
+  if (isExactMatch) {
+    score = 100;
+  } else {
+    const union = new Set([...set1, ...set2]);
+    score = union.size > 0 ? (intersection.length / union.size) * 100 : 0;
+  }
+  
   // Return original casing from arr1 for matched items
   const matched = arr1.filter(item => 
     intersection.includes(item.toLowerCase())
   );
-  return { score, matched };
+  return { score, matched, isExactMatch };
 };
 
-const calculateAbstractSimilarity = (abstract1: string, abstract2: string): { score: number; matchedWords: string[] } => {
+const calculateAbstractSimilarity = (abstract1: string, abstract2: string): { score: number; matchedWords: string[]; isExactMatch: boolean } => {
   const words1 = abstract1.toLowerCase().split(/\s+/).filter(w => w.length > 3);
   const words2 = abstract2.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-  const { score, matched } = calculateSimilarity(words1, words2);
-  return { score, matchedWords: matched };
+  const result = calculateSimilarity(words1, words2);
+  return { score: result.score, matchedWords: result.matched, isExactMatch: result.isExactMatch };
 };
 
 const AIAssistancePanel = () => {
@@ -215,6 +226,12 @@ const AIAssistancePanel = () => {
       const techResult = calculateSimilarity(docContent.technologies, project.technologies);
       const designResult = calculateSimilarity(docContent.designPatterns, project.designPatterns);
       
+      // Check if ALL sections are exact matches - this means it's a duplicate project
+      const isExactDuplicate = abstractResult.isExactMatch && 
+                               keywordResult.isExactMatch && 
+                               techResult.isExactMatch && 
+                               designResult.isExactMatch;
+      
       // Calculate section matches with detailed breakdown
       const sectionMatches: SectionMatch[] = [
         {
@@ -222,40 +239,41 @@ const AIAssistancePanel = () => {
           uploadedContent: docContent.abstract.split(/\s+/).filter(w => w.length > 3),
           originalContent: project.abstract.split(/\s+/).filter(w => w.length > 3),
           matchedItems: abstractResult.matchedWords,
-          matchPercentage: Math.round(abstractResult.score),
+          matchPercentage: abstractResult.isExactMatch ? 100 : Math.round(abstractResult.score),
           weight: 40,
-          weightedScore: Math.round(abstractResult.score * 0.4),
+          weightedScore: abstractResult.isExactMatch ? 40 : Math.round(abstractResult.score * 0.4),
         },
         {
           sectionName: "Keywords / Tags",
           uploadedContent: docContent.keywords,
           originalContent: project.keywords,
           matchedItems: keywordResult.matched,
-          matchPercentage: Math.round(keywordResult.score),
+          matchPercentage: keywordResult.isExactMatch ? 100 : Math.round(keywordResult.score),
           weight: 25,
-          weightedScore: Math.round(keywordResult.score * 0.25),
+          weightedScore: keywordResult.isExactMatch ? 25 : Math.round(keywordResult.score * 0.25),
         },
         {
           sectionName: "Technologies / Tools",
           uploadedContent: docContent.technologies,
           originalContent: project.technologies,
           matchedItems: techResult.matched,
-          matchPercentage: Math.round(techResult.score),
+          matchPercentage: techResult.isExactMatch ? 100 : Math.round(techResult.score),
           weight: 20,
-          weightedScore: Math.round(techResult.score * 0.2),
+          weightedScore: techResult.isExactMatch ? 20 : Math.round(techResult.score * 0.2),
         },
         {
           sectionName: "Design Patterns",
           uploadedContent: docContent.designPatterns,
           originalContent: project.designPatterns,
           matchedItems: designResult.matched,
-          matchPercentage: Math.round(designResult.score),
+          matchPercentage: designResult.isExactMatch ? 100 : Math.round(designResult.score),
           weight: 15,
-          weightedScore: Math.round(designResult.score * 0.15),
+          weightedScore: designResult.isExactMatch ? 15 : Math.round(designResult.score * 0.15),
         },
       ];
 
-      const overallMatch = Math.round(
+      // If it's an exact duplicate, set overall match to exactly 100%
+      const overallMatch = isExactDuplicate ? 100 : Math.round(
         abstractResult.score * 0.4 + keywordResult.score * 0.25 + techResult.score * 0.2 + designResult.score * 0.15
       );
       
