@@ -65,11 +65,11 @@ const ACCEPTED_FORMATS = [".pdf", ".doc", ".docx", ".ppt", ".pptx"];
 const projectDatabase = [
   {
     id: "proj-001",
-    title: "Smart Traffic Management System",
-    abstract: "traffic flow optimization urban congestion neural networks deep learning real-time monitoring",
-    keywords: ["traffic", "optimization", "urban", "smart city", "congestion"],
-    technologies: ["Python", "TensorFlow", "IoT", "Neural Networks", "Deep Learning"],
-    designPatterns: ["MVC", "Observer", "Real-time Processing"],
+    title: "Intelligent Traffic Flow Optimization using Deep Learning",
+    abstract: "intelligent traffic flow optimization deep learning neural networks urban environments congestion prediction signal timing IoT sensors real-time",
+    keywords: ["deep learning", "traffic", "optimization", "IoT", "smart city", "neural networks", "congestion"],
+    technologies: ["Python", "TensorFlow", "CNN", "LSTM", "IoT Sensors", "REST API", "Deep Learning"],
+    designPatterns: ["CNN-LSTM Hybrid", "Real-time Processing", "MVC", "Observer"],
     year: "2024",
     branch: "Computer Science",
   },
@@ -119,16 +119,19 @@ const projectDatabase = [
 const getSimulatedDocumentContent = (fileName: string) => {
   const name = fileName.toLowerCase();
   
-  // Exact match simulation - same project being uploaded
-  if (name.includes("smart-traffic") || name.includes("smart_traffic") || name.includes("smarttraffic")) {
+  // Exact match simulation - "Intelligent Traffic Flow Optimization using Deep Learning" project
+  if (name.includes("intelligent") || name.includes("traffic-flow") || name.includes("traffic_flow") || 
+      name.includes("trafficflow") || name.includes("deep-learning-traffic") || 
+      (name.includes("traffic") && name.includes("deep"))) {
     return {
-      abstract: "traffic flow optimization urban congestion neural networks deep learning real-time monitoring",
-      keywords: ["traffic", "optimization", "urban", "smart city", "congestion"],
-      technologies: ["Python", "TensorFlow", "IoT", "Neural Networks", "Deep Learning"],
-      designPatterns: ["MVC", "Observer", "Real-time Processing"],
+      abstract: "intelligent traffic flow optimization deep learning neural networks urban environments congestion prediction signal timing IoT sensors real-time",
+      keywords: ["deep learning", "traffic", "optimization", "IoT", "smart city", "neural networks", "congestion"],
+      technologies: ["Python", "TensorFlow", "CNN", "LSTM", "IoT Sensors", "REST API", "Deep Learning"],
+      designPatterns: ["CNN-LSTM Hybrid", "Real-time Processing", "MVC", "Observer"],
     };
   }
   
+  // Partial traffic match (not the exact project)
   if (name.includes("traffic") || name.includes("transport") || name.includes("vehicle")) {
     return {
       abstract: "traffic management vehicle detection urban transportation optimization smart monitoring",
