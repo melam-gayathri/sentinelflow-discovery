@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Navbar from "@/components/Navbar";
 import HeroSection from "@/components/HeroSection";
-import FilterBar from "@/components/FilterBar";
+import FilterBar, { Filters } from "@/components/FilterBar";
 import ProjectCard, { Project } from "@/components/ProjectCard";
 import AIAssistancePanel from "@/components/AIAssistancePanel";
 import FloatingAIButton from "@/components/FloatingAIButton";
@@ -74,33 +74,91 @@ const projects: Project[] = [
 const Index = () => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filters, setFilters] = useState<Filters>({
+    year: "All",
+    branch: "All",
+    techStack: "All",
+  });
 
   const handleViewDetails = (project: Project) => {
     setSelectedProject(project);
     setIsDialogOpen(true);
   };
 
+  const handleFilterChange = (key: keyof Filters, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Filter and search projects
+  const filteredProjects = useMemo(() => {
+    return projects.filter((project) => {
+      // Search filter
+      const searchLower = searchQuery.toLowerCase();
+      const matchesSearch = searchQuery === "" || 
+        project.title.toLowerCase().includes(searchLower) ||
+        project.description.toLowerCase().includes(searchLower) ||
+        project.tags.some(tag => tag.toLowerCase().includes(searchLower)) ||
+        project.branch.toLowerCase().includes(searchLower);
+
+      // Year filter
+      const matchesYear = filters.year === "All" || project.year === filters.year;
+
+      // Branch filter
+      const matchesBranch = filters.branch === "All" || project.branch === filters.branch;
+
+      // Tech Stack filter - check if any tag matches the tech stack
+      const techStackMap: Record<string, string[]> = {
+        "Python": ["#Python", "#ML", "#NLP", "#DeepLearning"],
+        "React": ["#React", "#Web3"],
+        "Machine Learning": ["#ML", "#DeepLearning", "#NLP", "#Analytics"],
+        "IoT": ["#IoT", "#Sensors"],
+        "Blockchain": ["#Blockchain", "#Web3"],
+        "Deep Learning": ["#DeepLearning"],
+        "NLP": ["#NLP"],
+        "AR": ["#AR"],
+        "Unity": ["#Unity"],
+      };
+      
+      const matchesTechStack = filters.techStack === "All" || 
+        project.tags.some(tag => 
+          techStackMap[filters.techStack]?.includes(tag)
+        );
+
+      return matchesSearch && matchesYear && matchesBranch && matchesTechStack;
+    });
+  }, [searchQuery, filters]);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <HeroSection />
-      <FilterBar />
+      <HeroSection searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+      <FilterBar filters={filters} onFilterChange={handleFilterChange} />
       
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8" id="explore">
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Project Grid */}
           <div className="flex-1">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {projects.map((project, index) => (
-                <ProjectCard
-                  key={project.title}
-                  {...project}
-                  index={index}
-                  onViewDetails={handleViewDetails}
-                />
-              ))}
-            </div>
+            {filteredProjects.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {filteredProjects.map((project, index) => (
+                  <ProjectCard
+                    key={project.title}
+                    {...project}
+                    index={index}
+                    onViewDetails={handleViewDetails}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-16">
+                <p className="text-muted-foreground text-lg mb-2">No projects found</p>
+                <p className="text-muted-foreground text-sm">
+                  Try adjusting your search or filters
+                </p>
+              </div>
+            )}
           </div>
 
           {/* AI Assistance Panel */}
