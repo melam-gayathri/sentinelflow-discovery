@@ -61,12 +61,12 @@ interface UploadState {
 
 const ACCEPTED_FORMATS = [".pdf", ".doc", ".docx", ".ppt", ".pptx"];
 
-// Mock project database for similarity checking
+// Mock project database for similarity checking - matches all projects from Index.tsx
 const projectDatabase = [
   {
     id: "proj-001",
     title: "Intelligent Traffic Flow Optimization using Deep Learning",
-    abstract: "intelligent traffic flow optimization deep learning neural networks urban environments congestion prediction signal timing IoT sensors real-time",
+    abstract: "intelligent traffic flow optimization deep learning neural networks urban environments congestion prediction signal timing IoT sensors real-time CNN RNN",
     keywords: ["deep learning", "traffic", "optimization", "IoT", "smart city", "neural networks", "congestion"],
     technologies: ["Python", "TensorFlow", "CNN", "LSTM", "IoT Sensors", "REST API", "Deep Learning"],
     designPatterns: ["CNN-LSTM Hybrid", "Real-time Processing", "MVC", "Observer"],
@@ -75,63 +75,106 @@ const projectDatabase = [
   },
   {
     id: "proj-002",
-    title: "AI-Powered Vehicle Detection",
-    abstract: "vehicle detection computer vision object recognition autonomous driving machine learning",
-    keywords: ["vehicle", "detection", "AI", "computer vision", "autonomous"],
-    technologies: ["OpenCV", "YOLO", "Python", "CNN", "TensorFlow"],
-    designPatterns: ["Pipeline", "CNN Architecture", "Real-time"],
+    title: "Blockchain-Based Supply Chain Transparency Platform",
+    abstract: "blockchain supply chain transparency decentralized application ethereum tracking verification smart contracts IPFS manufacturers distributors retailers consumers",
+    keywords: ["blockchain", "supply chain", "transparency", "tracking", "logistics", "DApp", "Ethereum"],
+    technologies: ["Ethereum", "Solidity", "Web3.js", "React", "IPFS", "Smart Contracts"],
+    designPatterns: ["Smart Contracts", "DApp Architecture", "Event-driven", "Decentralized"],
     year: "2024",
-    branch: "Computer Science",
+    branch: "Information Tech",
   },
   {
     id: "proj-003",
-    title: "Urban Mobility Analysis Platform",
-    abstract: "urban mobility transportation analysis data visualization city planning smart infrastructure",
-    keywords: ["mobility", "urban", "transportation", "analytics", "city"],
-    technologies: ["React", "D3.js", "Python", "PostgreSQL", "REST API"],
-    designPatterns: ["Dashboard", "Data Visualization", "Microservices"],
-    year: "2023",
-    branch: "Information Tech",
-  },
-  {
-    id: "proj-004",
-    title: "Blockchain Supply Chain Tracker",
-    abstract: "blockchain supply chain transparency decentralized ledger tracking smart contracts ethereum",
-    keywords: ["blockchain", "supply chain", "transparency", "tracking", "logistics"],
-    technologies: ["Ethereum", "Solidity", "Web3.js", "React", "Node.js"],
-    designPatterns: ["Smart Contracts", "DApp Architecture", "Event-driven"],
-    year: "2024",
-    branch: "Information Tech",
-  },
-  {
-    id: "proj-005",
-    title: "NLP Document Summarizer",
-    abstract: "natural language processing document summarization text analysis extraction transformers bert",
-    keywords: ["NLP", "summarization", "text analysis", "machine learning", "extraction"],
-    technologies: ["Python", "BERT", "Transformers", "FastAPI", "Docker"],
-    designPatterns: ["Transformer", "API Gateway", "Containerized"],
+    title: "NLP-Powered Academic Document Analyzer",
+    abstract: "natural language processing academic document analyzer summarization plagiarism detection transformer BERT GPT semantic embeddings text understanding",
+    keywords: ["NLP", "summarization", "plagiarism detection", "machine learning", "text analysis", "BERT", "academic"],
+    technologies: ["Python", "BERT", "GPT", "Transformers", "Docker", "Semantic Embeddings"],
+    designPatterns: ["Transformer", "Containerized", "API Gateway", "Microservices"],
     year: "2023",
     branch: "Computer Science",
   },
+  {
+    id: "proj-004",
+    title: "IoT-Enabled Smart Agriculture Monitoring",
+    abstract: "IoT smart agriculture monitoring wireless sensors soil moisture nutrients temperature crop health machine learning precision farming irrigation fertilization",
+    keywords: ["IoT", "agriculture", "sensors", "precision farming", "machine learning", "crop health", "irrigation"],
+    technologies: ["ESP32", "LoRaWAN", "Random Forest", "Gradient Boosting", "IoT Sensors", "Cloud"],
+    designPatterns: ["Sensor Network", "Edge Computing", "Data Pipeline", "Real-time Monitoring"],
+    year: "2023",
+    branch: "Electronics",
+  },
+  {
+    id: "proj-005",
+    title: "Augmented Reality Campus Navigation App",
+    abstract: "augmented reality campus navigation mobile application AR wayfinding BLE beacons visual landmark recognition indoor positioning Unity ARFoundation",
+    keywords: ["AR", "navigation", "mobile", "Unity", "campus", "indoor positioning", "wayfinding"],
+    technologies: ["Unity", "ARFoundation", "BLE Beacons", "Node.js", "MongoDB", "React Native"],
+    designPatterns: ["AR Overlay", "Hybrid Positioning", "Cross-platform", "Location Services"],
+    year: "2024",
+    branch: "Computer Science",
+  },
+  {
+    id: "proj-006",
+    title: "Predictive Maintenance for Industrial Equipment",
+    abstract: "predictive maintenance industrial equipment vibration analysis thermal imaging machine learning XGBoost neural network Industry 4.0 manufacturing failure prediction",
+    keywords: ["predictive maintenance", "Industry 4.0", "machine learning", "vibration analysis", "manufacturing", "IoT"],
+    technologies: ["XGBoost", "Neural Networks", "FFT Analysis", "Python", "CI/CD", "Thermal Imaging"],
+    designPatterns: ["Ensemble Learning", "CI/CD Pipeline", "Predictive Analytics", "Real-time Monitoring"],
+    year: "2023",
+    branch: "Mechanical",
+  },
 ];
+
+// Helper to find exact project match by keywords in filename
+const findExactProjectMatch = (fileName: string) => {
+  const name = fileName.toLowerCase();
+  
+  // Define keyword triggers for each project
+  const projectTriggers: Record<string, string[]> = {
+    "proj-001": ["intelligent", "traffic-flow", "traffic_flow", "trafficflow", "deep-learning-traffic", "traffic-optimization"],
+    "proj-002": ["blockchain", "supply-chain", "supply_chain", "supplychain", "transparency-platform"],
+    "proj-003": ["nlp", "document-analyzer", "academic-analyzer", "plagiarism", "nlp-powered", "academic-document"],
+    "proj-004": ["smart-agriculture", "agriculture-monitoring", "iot-agriculture", "crop-monitoring", "smart-farming", "precision-farming"],
+    "proj-005": ["ar-navigation", "campus-navigation", "augmented-reality", "ar-campus", "campus-nav"],
+    "proj-006": ["predictive-maintenance", "industrial-equipment", "equipment-maintenance", "industry-4", "vibration-analysis"],
+  };
+  
+  for (const [projectId, triggers] of Object.entries(projectTriggers)) {
+    for (const trigger of triggers) {
+      if (name.includes(trigger.replace(/-/g, "")) || name.includes(trigger)) {
+        return projectDatabase.find(p => p.id === projectId);
+      }
+    }
+  }
+  
+  // Check for partial matches with project title words
+  for (const project of projectDatabase) {
+    const titleWords = project.title.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+    const matchCount = titleWords.filter(word => name.includes(word)).length;
+    if (matchCount >= 2) {
+      return project;
+    }
+  }
+  
+  return null;
+};
 
 // Simulated keywords extracted from uploaded documents
 const getSimulatedDocumentContent = (fileName: string) => {
-  const name = fileName.toLowerCase();
-  
-  // Exact match simulation - "Intelligent Traffic Flow Optimization using Deep Learning" project
-  if (name.includes("intelligent") || name.includes("traffic-flow") || name.includes("traffic_flow") || 
-      name.includes("trafficflow") || name.includes("deep-learning-traffic") || 
-      (name.includes("traffic") && name.includes("deep"))) {
+  // Check for exact project match first
+  const exactMatch = findExactProjectMatch(fileName);
+  if (exactMatch) {
     return {
-      abstract: "intelligent traffic flow optimization deep learning neural networks urban environments congestion prediction signal timing IoT sensors real-time",
-      keywords: ["deep learning", "traffic", "optimization", "IoT", "smart city", "neural networks", "congestion"],
-      technologies: ["Python", "TensorFlow", "CNN", "LSTM", "IoT Sensors", "REST API", "Deep Learning"],
-      designPatterns: ["CNN-LSTM Hybrid", "Real-time Processing", "MVC", "Observer"],
+      abstract: exactMatch.abstract,
+      keywords: exactMatch.keywords,
+      technologies: exactMatch.technologies,
+      designPatterns: exactMatch.designPatterns,
     };
   }
   
-  // Partial traffic match (not the exact project)
+  const name = fileName.toLowerCase();
+  
+  // Partial matches for related content (not exact duplicates)
   if (name.includes("traffic") || name.includes("transport") || name.includes("vehicle")) {
     return {
       abstract: "traffic management vehicle detection urban transportation optimization smart monitoring",
@@ -140,20 +183,44 @@ const getSimulatedDocumentContent = (fileName: string) => {
       designPatterns: ["Real-time", "MVC"],
     };
   }
-  if (name.includes("blockchain") || name.includes("supply") || name.includes("chain")) {
+  if (name.includes("chain") || name.includes("ledger")) {
     return {
-      abstract: "blockchain supply chain management decentralized tracking smart contracts",
-      keywords: ["blockchain", "supply chain", "tracking", "decentralized"],
-      technologies: ["Ethereum", "Solidity", "React"],
-      designPatterns: ["Smart Contracts", "DApp"],
+      abstract: "supply chain management decentralized tracking distributed ledger",
+      keywords: ["supply chain", "tracking", "decentralized"],
+      technologies: ["Ethereum", "Solidity"],
+      designPatterns: ["Smart Contracts"],
     };
   }
-  if (name.includes("nlp") || name.includes("text") || name.includes("document")) {
+  if (name.includes("text") || name.includes("document") || name.includes("summary")) {
     return {
-      abstract: "natural language processing text analysis document processing transformers",
-      keywords: ["NLP", "text", "analysis", "document", "processing"],
-      technologies: ["Python", "BERT", "FastAPI"],
-      designPatterns: ["Transformer", "API"],
+      abstract: "text analysis document processing natural language",
+      keywords: ["text", "analysis", "document"],
+      technologies: ["Python", "BERT"],
+      designPatterns: ["API"],
+    };
+  }
+  if (name.includes("farm") || name.includes("crop") || name.includes("soil")) {
+    return {
+      abstract: "farming crop monitoring soil analysis sensors",
+      keywords: ["farming", "crop", "sensors"],
+      technologies: ["IoT", "Sensors"],
+      designPatterns: ["Monitoring"],
+    };
+  }
+  if (name.includes("navigation") || name.includes("map") || name.includes("location")) {
+    return {
+      abstract: "navigation mapping location tracking positioning",
+      keywords: ["navigation", "location", "mobile"],
+      technologies: ["React", "GPS"],
+      designPatterns: ["Location Services"],
+    };
+  }
+  if (name.includes("maintenance") || name.includes("equipment") || name.includes("industrial")) {
+    return {
+      abstract: "maintenance equipment monitoring industrial sensors",
+      keywords: ["maintenance", "equipment", "industrial"],
+      technologies: ["Python", "ML"],
+      designPatterns: ["Monitoring"],
     };
   }
   
