@@ -1,269 +1,86 @@
 import { useState, useRef, useCallback } from "react";
-import { Upload, FileText, Sparkles, X, CheckCircle2, AlertCircle, Tag, Palette, Code2, ChevronDown, ChevronUp, BookOpen, Link2, Calculator, Layers } from "lucide-react";
+import { Upload, FileText, Sparkles, X, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, BookOpen, FileWarning, Copy, Eye } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-
-interface SimilarityBreakdown {
-  abstract: number;
-  keywords: number;
-  design: number;
-  technologies: number;
-}
-
-interface SectionMatch {
-  sectionName: string;
-  uploadedContent: string[];
-  originalContent: string[];
-  matchedItems: string[];
-  matchPercentage: number;
-  weight: number;
-  weightedScore: number;
-}
-
-interface MatchEvidence {
-  abstractWords: string[];
-  keywords: string[];
-  technologies: string[];
-  designPatterns: string[];
-}
-
-interface MatchResult {
-  title: string;
-  overallMatch: number;
-  breakdown: SimilarityBreakdown;
-  matchedKeywords: string[];
-  matchedTechnologies: string[];
-  matchedDesignPatterns: string[];
-  matchedAbstractWords: string[];
-  evidence: MatchEvidence;
-  originalProject: {
-    abstract: string;
-    keywords: string[];
-    technologies: string[];
-    designPatterns: string[];
-  };
-  uploadedContent: {
-    abstract: string;
-    keywords: string[];
-    technologies: string[];
-    designPatterns: string[];
-  };
-  sectionMatches: SectionMatch[];
-}
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  checkPlagiarism,
+  getPlagiarismLevel,
+  PlagiarismReport,
+  SentenceMatch,
+  SourceReference,
+  PLAGIARISM_THRESHOLDS
+} from "@/lib/plagiarismChecker";
 
 interface UploadState {
   file: File | null;
   uploading: boolean;
   progress: number;
   analyzed: boolean;
-  hasAbstractMatch: boolean;
-  matches: MatchResult[];
+  report: PlagiarismReport | null;
 }
 
 const ACCEPTED_FORMATS = [".pdf", ".doc", ".docx", ".ppt", ".pptx"];
 
-// Mock project database for similarity checking - matches all projects from Index.tsx
+// Mock project database with full text content for plagiarism checking
 const projectDatabase = [
   {
-    id: "proj-001",
     title: "Intelligent Traffic Flow Optimization using Deep Learning",
-    abstract: "intelligent traffic flow optimization deep learning neural networks urban environments congestion prediction signal timing IoT sensors real-time CNN RNN",
-    keywords: ["deep learning", "traffic", "optimization", "IoT", "smart city", "neural networks", "congestion"],
-    technologies: ["Python", "TensorFlow", "CNN", "LSTM", "IoT Sensors", "REST API", "Deep Learning"],
-    designPatterns: ["CNN-LSTM Hybrid", "Real-time Processing", "MVC", "Observer"],
-    year: "2024",
-    branch: "Computer Science",
+    fullText: `A comprehensive system that uses neural networks to predict and optimize traffic patterns in urban environments. The system employs CNN and RNN to analyze real-time traffic data from IoT sensors. It implements deep learning algorithms for congestion prediction and signal timing optimization. The architecture uses a hybrid CNN-LSTM model for temporal pattern recognition. Real-time data processing enables dynamic adjustment of traffic signals. The system integrates with existing smart city infrastructure through REST APIs. Machine learning models are trained on historical traffic data to improve prediction accuracy. The solution reduces average commute times by optimizing traffic flow. IoT sensors collect vehicle count and speed data at major intersections. The dashboard provides real-time visualization of traffic conditions across the city.`
   },
   {
-    id: "proj-002",
     title: "Blockchain-Based Supply Chain Transparency Platform",
-    abstract: "blockchain supply chain transparency decentralized application ethereum tracking verification smart contracts IPFS manufacturers distributors retailers consumers",
-    keywords: ["blockchain", "supply chain", "transparency", "tracking", "logistics", "DApp", "Ethereum"],
-    technologies: ["Ethereum", "Solidity", "Web3.js", "React", "IPFS", "Smart Contracts"],
-    designPatterns: ["Smart Contracts", "DApp Architecture", "Event-driven", "Decentralized"],
-    year: "2024",
-    branch: "Information Tech",
+    fullText: `A decentralized application built on Ethereum for supply chain transparency and product tracking. The platform uses smart contracts to record every transaction and movement of goods. IPFS is utilized for storing product documentation and certificates. Manufacturers, distributors, retailers, and consumers can verify product authenticity. The system implements cryptographic verification for tamper-proof record keeping. Web3.js enables seamless interaction between the frontend and blockchain. Each product receives a unique digital identity stored on the distributed ledger. QR codes link physical products to their blockchain records. The solution eliminates counterfeit products through transparent tracking. Real-time visibility improves supply chain efficiency and trust.`
   },
   {
-    id: "proj-003",
     title: "NLP-Powered Academic Document Analyzer",
-    abstract: "natural language processing academic document analyzer summarization plagiarism detection transformer BERT GPT semantic embeddings text understanding",
-    keywords: ["NLP", "summarization", "plagiarism detection", "machine learning", "text analysis", "BERT", "academic"],
-    technologies: ["Python", "BERT", "GPT", "Transformers", "Docker", "Semantic Embeddings"],
-    designPatterns: ["Transformer", "Containerized", "API Gateway", "Microservices"],
-    year: "2023",
-    branch: "Computer Science",
+    fullText: `A natural language processing system for academic document analysis and summarization. The platform implements BERT and GPT models for semantic understanding of research papers. Automatic summarization condenses lengthy documents into key insights. Plagiarism detection identifies copied content through text comparison algorithms. The system uses transformer architecture for contextual embeddings. Document classification organizes papers by research domain and methodology. Citation analysis maps relationships between academic works. Named entity recognition extracts key concepts and terminology. The API provides integration with research management tools. Semantic search enables finding relevant papers based on meaning rather than keywords.`
   },
   {
-    id: "proj-004",
     title: "IoT-Enabled Smart Agriculture Monitoring",
-    abstract: "IoT smart agriculture monitoring wireless sensors soil moisture nutrients temperature crop health machine learning precision farming irrigation fertilization",
-    keywords: ["IoT", "agriculture", "sensors", "precision farming", "machine learning", "crop health", "irrigation"],
-    technologies: ["ESP32", "LoRaWAN", "Random Forest", "Gradient Boosting", "IoT Sensors", "Cloud"],
-    designPatterns: ["Sensor Network", "Edge Computing", "Data Pipeline", "Real-time Monitoring"],
-    year: "2023",
-    branch: "Electronics",
+    fullText: `A precision farming system using IoT sensors for crop health monitoring and irrigation control. Wireless sensors measure soil moisture, nutrients, and temperature across agricultural fields. Machine learning models predict optimal irrigation and fertilization schedules. ESP32 microcontrollers collect and transmit sensor data via LoRaWAN. Random Forest and Gradient Boosting algorithms analyze environmental conditions. The dashboard displays real-time crop health metrics and alerts. Automated irrigation systems respond to sensor data to optimize water usage. Historical data analysis identifies patterns in crop growth and yield. Weather integration improves prediction accuracy for farming decisions. The solution reduces water consumption while maximizing crop productivity.`
   },
   {
-    id: "proj-005",
     title: "Augmented Reality Campus Navigation App",
-    abstract: "augmented reality campus navigation mobile application AR wayfinding BLE beacons visual landmark recognition indoor positioning Unity ARFoundation",
-    keywords: ["AR", "navigation", "mobile", "Unity", "campus", "indoor positioning", "wayfinding"],
-    technologies: ["Unity", "ARFoundation", "BLE Beacons", "Node.js", "MongoDB", "React Native"],
-    designPatterns: ["AR Overlay", "Hybrid Positioning", "Cross-platform", "Location Services"],
-    year: "2024",
-    branch: "Computer Science",
+    fullText: `A mobile application using augmented reality for indoor campus navigation and wayfinding. ARFoundation and Unity provide the core AR experience on iOS and Android. BLE beacons enable precise indoor positioning where GPS is unavailable. Visual landmark recognition helps users orient themselves in complex buildings. The app overlays directional arrows and building information on the camera feed. Node.js backend manages building maps and point of interest data. MongoDB stores user preferences and navigation history. Cross-platform React Native components share code between mobile platforms. Accessibility features support users with visual or mobility impairments. Integration with class schedules provides contextual navigation to upcoming lectures.`
   },
   {
-    id: "proj-006",
     title: "Predictive Maintenance for Industrial Equipment",
-    abstract: "predictive maintenance industrial equipment vibration analysis thermal imaging machine learning XGBoost neural network Industry 4.0 manufacturing failure prediction",
-    keywords: ["predictive maintenance", "Industry 4.0", "machine learning", "vibration analysis", "manufacturing", "IoT"],
-    technologies: ["XGBoost", "Neural Networks", "FFT Analysis", "Python", "CI/CD", "Thermal Imaging"],
-    designPatterns: ["Ensemble Learning", "CI/CD Pipeline", "Predictive Analytics", "Real-time Monitoring"],
-    year: "2023",
-    branch: "Mechanical",
-  },
+    fullText: `A machine learning system for predicting equipment failures in manufacturing environments. Vibration analysis and thermal imaging detect early signs of mechanical wear. XGBoost and neural networks process sensor data to identify failure patterns. FFT analysis transforms vibration signals into frequency domain features. The system integrates with Industry 4.0 infrastructure for real-time monitoring. Predictive models reduce unplanned downtime through proactive maintenance scheduling. CI/CD pipelines enable continuous improvement of machine learning models. Historical failure data trains algorithms to recognize pre-failure signatures. Alert systems notify maintenance teams of potential equipment issues. The dashboard provides equipment health scores and maintenance recommendations.`
+  }
 ];
 
-// Helper to find exact project match by keywords in filename
-const findExactProjectMatch = (fileName: string) => {
+// Simulated document content extraction based on filename
+const getSimulatedDocumentText = (fileName: string): string => {
   const name = fileName.toLowerCase();
   
-  // Define keyword triggers for each project
-  const projectTriggers: Record<string, string[]> = {
-    "proj-001": ["intelligent", "traffic-flow", "traffic_flow", "trafficflow", "deep-learning-traffic", "traffic-optimization"],
-    "proj-002": ["blockchain", "supply-chain", "supply_chain", "supplychain", "transparency-platform"],
-    "proj-003": ["nlp", "document-analyzer", "academic-analyzer", "plagiarism", "nlp-powered", "academic-document"],
-    "proj-004": ["smart-agriculture", "agriculture-monitoring", "iot-agriculture", "crop-monitoring", "smart-farming", "precision-farming"],
-    "proj-005": ["ar-navigation", "campus-navigation", "augmented-reality", "ar-campus", "campus-nav"],
-    "proj-006": ["predictive-maintenance", "industrial-equipment", "equipment-maintenance", "industry-4", "vibration-analysis"],
+  // Keyword triggers for exact matches
+  const triggers: Record<string, number> = {
+    "intelligent": 0, "traffic-flow": 0, "traffic_flow": 0, "trafficflow": 0,
+    "blockchain": 1, "supply-chain": 1, "supplychain": 1,
+    "nlp": 2, "document-analyzer": 2, "academic-analyzer": 2,
+    "smart-agriculture": 3, "agriculture-monitoring": 3, "smart-farming": 3,
+    "ar-navigation": 4, "campus-navigation": 4, "augmented-reality": 4, "ar-campus": 4,
+    "predictive-maintenance": 5, "industrial-equipment": 5, "equipment-maintenance": 5
   };
   
-  for (const [projectId, triggers] of Object.entries(projectTriggers)) {
-    for (const trigger of triggers) {
-      if (name.includes(trigger.replace(/-/g, "")) || name.includes(trigger)) {
-        return projectDatabase.find(p => p.id === projectId);
-      }
+  for (const [keyword, index] of Object.entries(triggers)) {
+    if (name.includes(keyword.replace(/-/g, "")) || name.includes(keyword)) {
+      return projectDatabase[index].fullText;
     }
   }
   
-  // Check for partial matches with project title words
+  // Check for partial word matches in project titles
   for (const project of projectDatabase) {
     const titleWords = project.title.toLowerCase().split(/\s+/).filter(w => w.length > 4);
     const matchCount = titleWords.filter(word => name.includes(word)).length;
     if (matchCount >= 2) {
-      return project;
+      return project.fullText;
     }
   }
   
-  return null;
-};
-
-// Simulated keywords extracted from uploaded documents
-const getSimulatedDocumentContent = (fileName: string) => {
-  // Check for exact project match first
-  const exactMatch = findExactProjectMatch(fileName);
-  if (exactMatch) {
-    return {
-      abstract: exactMatch.abstract,
-      keywords: exactMatch.keywords,
-      technologies: exactMatch.technologies,
-      designPatterns: exactMatch.designPatterns,
-    };
-  }
-  
-  const name = fileName.toLowerCase();
-  
-  // Partial matches for related content (not exact duplicates)
-  if (name.includes("traffic") || name.includes("transport") || name.includes("vehicle")) {
-    return {
-      abstract: "traffic management vehicle detection urban transportation optimization smart monitoring",
-      keywords: ["traffic", "vehicle", "urban", "optimization", "smart"],
-      technologies: ["Python", "TensorFlow", "IoT"],
-      designPatterns: ["Real-time", "MVC"],
-    };
-  }
-  if (name.includes("chain") || name.includes("ledger")) {
-    return {
-      abstract: "supply chain management decentralized tracking distributed ledger",
-      keywords: ["supply chain", "tracking", "decentralized"],
-      technologies: ["Ethereum", "Solidity"],
-      designPatterns: ["Smart Contracts"],
-    };
-  }
-  if (name.includes("text") || name.includes("document") || name.includes("summary")) {
-    return {
-      abstract: "text analysis document processing natural language",
-      keywords: ["text", "analysis", "document"],
-      technologies: ["Python", "BERT"],
-      designPatterns: ["API"],
-    };
-  }
-  if (name.includes("farm") || name.includes("crop") || name.includes("soil")) {
-    return {
-      abstract: "farming crop monitoring soil analysis sensors",
-      keywords: ["farming", "crop", "sensors"],
-      technologies: ["IoT", "Sensors"],
-      designPatterns: ["Monitoring"],
-    };
-  }
-  if (name.includes("navigation") || name.includes("map") || name.includes("location")) {
-    return {
-      abstract: "navigation mapping location tracking positioning",
-      keywords: ["navigation", "location", "mobile"],
-      technologies: ["React", "GPS"],
-      designPatterns: ["Location Services"],
-    };
-  }
-  if (name.includes("maintenance") || name.includes("equipment") || name.includes("industrial")) {
-    return {
-      abstract: "maintenance equipment monitoring industrial sensors",
-      keywords: ["maintenance", "equipment", "industrial"],
-      technologies: ["Python", "ML"],
-      designPatterns: ["Monitoring"],
-    };
-  }
-  
-  // Random content for other files
-  const randomKeywords = ["machine learning", "data analysis", "automation", "web", "mobile"];
-  const randomTech = ["Python", "React", "Node.js", "PostgreSQL"];
-  return {
-    abstract: "project implementation system design software development",
-    keywords: randomKeywords.slice(0, 3),
-    technologies: randomTech.slice(0, 2),
-    designPatterns: ["MVC", "REST"],
-  };
-};
-
-const calculateSimilarity = (arr1: string[], arr2: string[]): { score: number; matched: string[]; isExactMatch: boolean } => {
-  const set1 = new Set(arr1.map(s => s.toLowerCase()));
-  const set2 = new Set(arr2.map(s => s.toLowerCase()));
-  const intersection = [...set1].filter(x => set2.has(x));
-  
-  // Check for exact match: all items in uploaded content exist in original AND same count
-  const isExactMatch = set1.size === set2.size && intersection.length === set1.size;
-  
-  // Use exact 100% for identical sets, otherwise use Jaccard similarity
-  let score: number;
-  if (isExactMatch) {
-    score = 100;
-  } else {
-    const union = new Set([...set1, ...set2]);
-    score = union.size > 0 ? (intersection.length / union.size) * 100 : 0;
-  }
-  
-  // Return original casing from arr1 for matched items
-  const matched = arr1.filter(item => 
-    intersection.includes(item.toLowerCase())
-  );
-  return { score, matched, isExactMatch };
-};
-
-const calculateAbstractSimilarity = (abstract1: string, abstract2: string): { score: number; matchedWords: string[]; isExactMatch: boolean } => {
-  const words1 = abstract1.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-  const words2 = abstract2.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-  const result = calculateSimilarity(words1, words2);
-  return { score: result.score, matchedWords: result.matched, isExactMatch: result.isExactMatch };
+  // Return unique content for unknown files
+  return `This is a unique research project focusing on novel approaches and methodologies. The implementation uses custom algorithms developed specifically for this application. Original data collection methods ensure the authenticity of results. The system architecture was designed from scratch without referencing existing solutions. All code and documentation are original works created for this submission.`;
 };
 
 const AIAssistancePanel = () => {
@@ -272,173 +89,74 @@ const AIAssistancePanel = () => {
     uploading: false,
     progress: 0,
     analyzed: false,
-    hasAbstractMatch: false,
-    matches: [],
+    report: null
   });
   const [isDragging, setIsDragging] = useState(false);
-  const [activeTab, setActiveTab] = useState<"abstract" | "detailed">("abstract");
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [activeTab, setActiveTab] = useState<"overview" | "sentences" | "sources">("overview");
+  const [expandedSentences, setExpandedSentences] = useState<Set<number>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const toggleSection = (sectionKey: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [sectionKey]: !prev[sectionKey]
-    }));
+  const toggleSentence = (index: number) => {
+    setExpandedSentences(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
   };
 
   const analyzeDocument = useCallback((file: File) => {
-    const docContent = getSimulatedDocumentContent(file.name);
-    
-    const matches: MatchResult[] = projectDatabase.map(project => {
-      const abstractResult = calculateAbstractSimilarity(docContent.abstract, project.abstract);
-      const keywordResult = calculateSimilarity(docContent.keywords, project.keywords);
-      const techResult = calculateSimilarity(docContent.technologies, project.technologies);
-      const designResult = calculateSimilarity(docContent.designPatterns, project.designPatterns);
-      
-      // Check if ALL sections are exact matches - this means it's a duplicate project
-      const isExactDuplicate = abstractResult.isExactMatch && 
-                               keywordResult.isExactMatch && 
-                               techResult.isExactMatch && 
-                               designResult.isExactMatch;
-      
-      // Calculate section matches with detailed breakdown
-      const sectionMatches: SectionMatch[] = [
-        {
-          sectionName: "Abstract / Content",
-          uploadedContent: docContent.abstract.split(/\s+/).filter(w => w.length > 3),
-          originalContent: project.abstract.split(/\s+/).filter(w => w.length > 3),
-          matchedItems: abstractResult.matchedWords,
-          matchPercentage: abstractResult.isExactMatch ? 100 : Math.round(abstractResult.score),
-          weight: 40,
-          weightedScore: abstractResult.isExactMatch ? 40 : Math.round(abstractResult.score * 0.4),
-        },
-        {
-          sectionName: "Keywords / Tags",
-          uploadedContent: docContent.keywords,
-          originalContent: project.keywords,
-          matchedItems: keywordResult.matched,
-          matchPercentage: keywordResult.isExactMatch ? 100 : Math.round(keywordResult.score),
-          weight: 25,
-          weightedScore: keywordResult.isExactMatch ? 25 : Math.round(keywordResult.score * 0.25),
-        },
-        {
-          sectionName: "Technologies / Tools",
-          uploadedContent: docContent.technologies,
-          originalContent: project.technologies,
-          matchedItems: techResult.matched,
-          matchPercentage: techResult.isExactMatch ? 100 : Math.round(techResult.score),
-          weight: 20,
-          weightedScore: techResult.isExactMatch ? 20 : Math.round(techResult.score * 0.2),
-        },
-        {
-          sectionName: "Design Patterns",
-          uploadedContent: docContent.designPatterns,
-          originalContent: project.designPatterns,
-          matchedItems: designResult.matched,
-          matchPercentage: designResult.isExactMatch ? 100 : Math.round(designResult.score),
-          weight: 15,
-          weightedScore: designResult.isExactMatch ? 15 : Math.round(designResult.score * 0.15),
-        },
-      ];
-
-      // If it's an exact duplicate, set overall match to exactly 100%
-      const overallMatch = isExactDuplicate ? 100 : Math.round(
-        abstractResult.score * 0.4 + keywordResult.score * 0.25 + techResult.score * 0.2 + designResult.score * 0.15
-      );
-      
-      return {
-        title: project.title,
-        overallMatch,
-        breakdown: {
-          abstract: Math.round(abstractResult.score),
-          keywords: Math.round(keywordResult.score),
-          design: Math.round(designResult.score),
-          technologies: Math.round(techResult.score),
-        },
-        matchedKeywords: keywordResult.matched,
-        matchedTechnologies: techResult.matched,
-        matchedDesignPatterns: designResult.matched,
-        matchedAbstractWords: abstractResult.matchedWords,
-        evidence: {
-          abstractWords: abstractResult.matchedWords,
-          keywords: keywordResult.matched,
-          technologies: techResult.matched,
-          designPatterns: designResult.matched,
-        },
-        originalProject: {
-          abstract: project.abstract,
-          keywords: project.keywords,
-          technologies: project.technologies,
-          designPatterns: project.designPatterns,
-        },
-        uploadedContent: {
-          abstract: docContent.abstract,
-          keywords: docContent.keywords,
-          technologies: docContent.technologies,
-          designPatterns: docContent.designPatterns,
-        },
-        sectionMatches,
-      };
-    }).filter(m => m.overallMatch > 20).sort((a, b) => b.overallMatch - a.overallMatch);
-    
-    const hasAbstractMatch = matches.some(m => m.breakdown.abstract >= 50);
-    
-    return { matches, hasAbstractMatch };
+    const documentText = getSimulatedDocumentText(file.name);
+    const report = checkPlagiarism(documentText, projectDatabase);
+    return report;
   }, []);
 
   const simulateAnalysis = useCallback((file: File) => {
-    setUploadState((prev) => ({ ...prev, uploading: true, progress: 0 }));
-    setExpandedSections({});
+    setUploadState(prev => ({ ...prev, uploading: true, progress: 0 }));
+    setExpandedSentences(new Set());
 
     const progressInterval = setInterval(() => {
-      setUploadState((prev) => {
+      setUploadState(prev => {
         if (prev.progress >= 100) {
           clearInterval(progressInterval);
           return prev;
         }
-        return { ...prev, progress: prev.progress + 8 };
+        return { ...prev, progress: prev.progress + 6 };
       });
-    }, 120);
+    }, 100);
 
     setTimeout(() => {
       clearInterval(progressInterval);
-      const { matches, hasAbstractMatch } = analyzeDocument(file);
+      const report = analyzeDocument(file);
 
       setUploadState({
         file,
         uploading: false,
         progress: 100,
         analyzed: true,
-        hasAbstractMatch,
-        matches,
+        report
       });
-      
-      setActiveTab(hasAbstractMatch ? "abstract" : "detailed");
-    }, 1500);
+    }, 1800);
   }, [analyzeDocument]);
 
-  const handleFileSelect = useCallback(
-    (file: File) => {
-      const extension = "." + file.name.split(".").pop()?.toLowerCase();
-      if (!ACCEPTED_FORMATS.includes(extension)) {
-        alert(`Invalid file format. Please upload: ${ACCEPTED_FORMATS.join(", ")}`);
-        return;
-      }
-      simulateAnalysis(file);
-    },
-    [simulateAnalysis]
-  );
+  const handleFileSelect = useCallback((file: File) => {
+    const extension = "." + file.name.split(".").pop()?.toLowerCase();
+    if (!ACCEPTED_FORMATS.includes(extension)) {
+      alert(`Invalid file format. Please upload: ${ACCEPTED_FORMATS.join(", ")}`);
+      return;
+    }
+    simulateAnalysis(file);
+  }, [simulateAnalysis]);
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      setIsDragging(false);
-      const file = e.dataTransfer.files[0];
-      if (file) handleFileSelect(file);
-    },
-    [handleFileSelect]
-  );
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileSelect(file);
+  }, [handleFileSelect]);
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -463,28 +181,37 @@ const AIAssistancePanel = () => {
       uploading: false,
       progress: 0,
       analyzed: false,
-      hasAbstractMatch: false,
-      matches: [],
+      report: null
     });
-    setExpandedSections({});
+    setExpandedSentences(new Set());
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const getMatchColor = (percent: number) => {
-    if (percent >= 70) return "bg-destructive/10 text-destructive";
-    if (percent >= 40) return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
-    return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
+  const getScoreColor = (score: number) => {
+    if (score >= PLAGIARISM_THRESHOLDS.HIGH_SIMILARITY) return "text-destructive";
+    if (score >= PLAGIARISM_THRESHOLDS.MODERATE) return "text-amber-600 dark:text-amber-400";
+    return "text-green-600 dark:text-green-400";
   };
 
-  const getSectionIcon = (sectionName: string) => {
-    switch (sectionName) {
-      case "Abstract / Content": return <FileText className="h-3.5 w-3.5" />;
-      case "Keywords / Tags": return <Tag className="h-3.5 w-3.5" />;
-      case "Technologies / Tools": return <Code2 className="h-3.5 w-3.5" />;
-      case "Design Patterns": return <Palette className="h-3.5 w-3.5" />;
-      default: return <Layers className="h-3.5 w-3.5" />;
+  const getScoreBgColor = (score: number) => {
+    if (score >= PLAGIARISM_THRESHOLDS.HIGH_SIMILARITY) return "bg-destructive/10";
+    if (score >= PLAGIARISM_THRESHOLDS.MODERATE) return "bg-amber-100 dark:bg-amber-900/20";
+    return "bg-green-100 dark:bg-green-900/20";
+  };
+
+  const getMatchTypeBadge = (type: "exact" | "paraphrase" | "partial") => {
+    switch (type) {
+      case "exact":
+        return <Badge variant="destructive" className="text-[10px]">Exact</Badge>;
+      case "paraphrase":
+        return <Badge className="bg-amber-500 text-[10px]">Paraphrase</Badge>;
+      default:
+        return <Badge variant="secondary" className="text-[10px]">Partial</Badge>;
     }
   };
+
+  const { report } = uploadState;
+  const plagiarismLevel = report ? getPlagiarismLevel(report.overallPlagiarismScore) : null;
 
   return (
     <div className="card-elevated p-6 sticky top-24">
@@ -493,7 +220,7 @@ const AIAssistancePanel = () => {
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
           <Sparkles className="h-4 w-4 text-accent" />
         </div>
-        <h3 className="text-lg font-semibold text-foreground">AI Similarity Check</h3>
+        <h3 className="text-lg font-semibold text-foreground">Plagiarism Checker</h3>
       </div>
 
       {/* Upload Zone */}
@@ -516,8 +243,8 @@ const AIAssistancePanel = () => {
           onClick={handleClick}
         >
           <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-          <p className="text-sm font-medium text-foreground mb-1">Drag & Drop Files</p>
-          <p className="text-xs text-muted-foreground">Upload .pdf, .doc, .docx, .ppt, .pptx</p>
+          <p className="text-sm font-medium text-foreground mb-1">Upload Document</p>
+          <p className="text-xs text-muted-foreground">Drop .pdf, .doc, .docx, .ppt, .pptx</p>
         </div>
       ) : (
         <div className="mb-6 p-4 rounded-lg bg-muted/50 border border-border">
@@ -537,33 +264,41 @@ const AIAssistancePanel = () => {
             <div className="space-y-2">
               <Progress value={uploadState.progress} className="h-2" />
               <p className="text-xs text-muted-foreground">
-                {uploadState.progress < 40 ? "Extracting abstract..." : 
-                 uploadState.progress < 70 ? "Analyzing keywords & technologies..." :
-                 "Comparing with database..."}
+                {uploadState.progress < 30 ? "Extracting text content..." :
+                 uploadState.progress < 60 ? "Generating n-gram shingles..." :
+                 uploadState.progress < 85 ? "Comparing fingerprints..." :
+                 "Analyzing sentence matches..."}
               </p>
             </div>
           )}
 
-          {uploadState.analyzed && !uploadState.uploading && (
+          {uploadState.analyzed && report && (
             <div className="flex items-center gap-2 text-sm">
-              {uploadState.matches.some(m => m.overallMatch >= 95) ? (
+              {report.isExactDuplicate ? (
                 <>
                   <AlertCircle className="h-4 w-4 text-destructive" />
                   <span className="text-destructive font-medium">
-                    Project Already Exists!
+                    Duplicate Document Detected!
                   </span>
                 </>
-              ) : uploadState.matches.length > 0 ? (
+              ) : report.overallPlagiarismScore >= PLAGIARISM_THRESHOLDS.HIGH_SIMILARITY ? (
                 <>
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  <span className="text-primary">
-                    {uploadState.hasAbstractMatch ? "Abstract matches found" : "Similar projects detected"}
+                  <FileWarning className="h-4 w-4 text-destructive" />
+                  <span className="text-destructive font-medium">
+                    High plagiarism detected
+                  </span>
+                </>
+              ) : report.overallPlagiarismScore >= PLAGIARISM_THRESHOLDS.MODERATE ? (
+                <>
+                  <Copy className="h-4 w-4 text-amber-500" />
+                  <span className="text-amber-600 dark:text-amber-400">
+                    Some matching content found
                   </span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  <span className="text-green-600 dark:text-green-400">No matches - Your project is unique!</span>
+                  <span className="text-green-600 dark:text-green-400">Original content verified</span>
                 </>
               )}
             </div>
@@ -572,213 +307,203 @@ const AIAssistancePanel = () => {
       )}
 
       {/* Results Section */}
-      {uploadState.analyzed && uploadState.matches.length === 0 ? (
-        <div className="text-center py-6">
-          <CheckCircle2 className="h-10 w-10 text-green-500 mx-auto mb-3" />
-          <h4 className="text-sm font-medium text-foreground mb-1">No Matches Detected</h4>
-          <p className="text-xs text-muted-foreground">
-            Your project appears to be unique. No similar projects found in our database.
-          </p>
-        </div>
-      ) : uploadState.analyzed && uploadState.matches.length > 0 ? (
+      {uploadState.analyzed && report && (
         <>
-          {/* Existing Project Alert */}
-          {uploadState.matches.some(m => m.overallMatch >= 95) && (
-            <div className="mb-4 p-4 rounded-lg bg-destructive/10 border border-destructive/30">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertCircle className="h-5 w-5 text-destructive" />
-                <span className="text-sm font-bold text-destructive">⚠️ Duplicate Project Detected</span>
+          {/* Overall Score Card */}
+          <div className={`mb-4 p-4 rounded-lg border ${
+            report.isExactDuplicate 
+              ? "bg-destructive/10 border-destructive/30" 
+              : getScoreBgColor(report.overallPlagiarismScore) + " border-border"
+          }`}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-foreground">Plagiarism Score</span>
+              <span className={`text-2xl font-bold ${getScoreColor(report.overallPlagiarismScore)}`}>
+                {report.overallPlagiarismScore}%
+              </span>
+            </div>
+            
+            {/* Progress bar */}
+            <div className="h-3 bg-muted rounded-full overflow-hidden mb-3">
+              <div 
+                className={`h-full transition-all ${
+                  report.overallPlagiarismScore >= PLAGIARISM_THRESHOLDS.HIGH_SIMILARITY 
+                    ? "bg-destructive" 
+                    : report.overallPlagiarismScore >= PLAGIARISM_THRESHOLDS.MODERATE 
+                      ? "bg-amber-500" 
+                      : "bg-green-500"
+                }`}
+                style={{ width: `${report.overallPlagiarismScore}%` }}
+              />
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="p-2 bg-background/50 rounded">
+                <div className="text-lg font-bold text-foreground">{report.totalWords}</div>
+                <div className="text-[10px] text-muted-foreground">Words Analyzed</div>
               </div>
-              <p className="text-xs text-destructive/90 mb-3">
-                This project already exists in the database with a <strong>100% match</strong>. 
-                The similarity was determined by comparing multiple sections of your document against existing projects.
-              </p>
-              
-              {/* Match Calculation Explanation */}
-              <div className="bg-background/50 rounded-md p-3 border border-destructive/20">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Calculator className="h-3.5 w-3.5 text-destructive" />
-                  <span className="text-xs font-semibold text-foreground">How 100% Match Was Calculated:</span>
+              <div className="p-2 bg-background/50 rounded">
+                <div className={`text-lg font-bold ${getScoreColor(report.overallPlagiarismScore)}`}>
+                  {report.totalWordsCopied}
                 </div>
-                <div className="space-y-1 text-[11px] text-muted-foreground">
-                  <div className="flex justify-between">
-                    <span>• Abstract/Content (40% weight)</span>
-                    <span className="text-destructive font-medium">100% × 0.40 = 40%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>• Keywords/Tags (25% weight)</span>
-                    <span className="text-destructive font-medium">100% × 0.25 = 25%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>• Technologies (20% weight)</span>
-                    <span className="text-destructive font-medium">100% × 0.20 = 20%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>• Design Patterns (15% weight)</span>
-                    <span className="text-destructive font-medium">100% × 0.15 = 15%</span>
-                  </div>
-                  <div className="flex justify-between pt-1 border-t border-destructive/20 font-semibold text-destructive">
-                    <span>Total Weighted Score</span>
-                    <span>= 100%</span>
-                  </div>
-                </div>
+                <div className="text-[10px] text-muted-foreground">Words Matched</div>
+              </div>
+              <div className="p-2 bg-background/50 rounded">
+                <div className="text-lg font-bold text-foreground">{report.sourceProjects.length}</div>
+                <div className="text-[10px] text-muted-foreground">Sources Found</div>
               </div>
             </div>
-          )}
 
-          {/* Tab Switcher */}
-          <div className="flex gap-1 mb-4 p-1 bg-muted rounded-lg">
-            <button
-              onClick={() => setActiveTab("abstract")}
-              className={`flex-1 text-xs font-medium py-2 px-3 rounded-md transition-colors ${
-                activeTab === "abstract" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Summary
-            </button>
-            <button
-              onClick={() => setActiveTab("detailed")}
-              className={`flex-1 text-xs font-medium py-2 px-3 rounded-md transition-colors ${
-                activeTab === "detailed" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Full Report
-            </button>
+            {/* Status Badge */}
+            {plagiarismLevel && (
+              <div className="mt-3 flex justify-center">
+                <Badge 
+                  variant={plagiarismLevel.level === "unique" ? "secondary" : "destructive"}
+                  className={
+                    plagiarismLevel.level === "unique" 
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" 
+                      : plagiarismLevel.level === "moderate" 
+                        ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                        : ""
+                  }
+                >
+                  {plagiarismLevel.label}
+                </Badge>
+              </div>
+            )}
           </div>
 
-          {activeTab === "abstract" ? (
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium text-foreground">Similarity Summary</h4>
-              {uploadState.matches.filter(m => m.breakdown.abstract > 0).length > 0 ? (
-                uploadState.matches.map((project) => (
-                  <div key={project.title} className={`p-3 rounded-lg transition-colors ${
-                    project.overallMatch >= 95 ? "bg-destructive/10 border border-destructive/20" : "bg-muted/50 hover:bg-muted"
-                  }`}>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <p className="text-sm font-medium text-foreground">{project.title}</p>
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        project.overallMatch >= 95 ? "bg-destructive text-destructive-foreground" : getMatchColor(project.breakdown.abstract)
-                      }`}>
-                        {project.overallMatch >= 95 ? "100%" : `${project.overallMatch}%`}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      {project.overallMatch >= 95 ? "⚠️ Exact match - Project already exists in database!" :
-                       project.breakdown.abstract >= 50 ? "High abstract similarity detected" :
-                       project.breakdown.abstract >= 30 ? "Moderate content overlap" : "Low similarity"}
-                    </p>
-                    
-                    {/* Quick stats for summary */}
-                    {project.overallMatch >= 95 && (
-                      <div className="grid grid-cols-2 gap-2 mt-3 pt-2 border-t border-border">
-                        <div className="text-center p-2 bg-destructive/5 rounded">
-                          <div className="text-lg font-bold text-destructive">{project.evidence.abstractWords.length}</div>
-                          <div className="text-[10px] text-muted-foreground">Words Matched</div>
-                        </div>
-                        <div className="text-center p-2 bg-destructive/5 rounded">
-                          <div className="text-lg font-bold text-destructive">{project.evidence.keywords.length + project.evidence.technologies.length}</div>
-                          <div className="text-[10px] text-muted-foreground">Tags Matched</div>
-                        </div>
+          {/* Tab Navigation */}
+          {(report.sourceProjects.length > 0 || report.sentenceBreakdown.length > 0) && (
+            <>
+              <div className="flex gap-1 mb-4 p-1 bg-muted rounded-lg">
+                <button
+                  onClick={() => setActiveTab("overview")}
+                  className={`flex-1 text-xs font-medium py-2 px-2 rounded-md transition-colors ${
+                    activeTab === "overview" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Overview
+                </button>
+                <button
+                  onClick={() => setActiveTab("sentences")}
+                  className={`flex-1 text-xs font-medium py-2 px-2 rounded-md transition-colors ${
+                    activeTab === "sentences" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Matches
+                </button>
+                <button
+                  onClick={() => setActiveTab("sources")}
+                  className={`flex-1 text-xs font-medium py-2 px-2 rounded-md transition-colors ${
+                    activeTab === "sources" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Sources
+                </button>
+              </div>
+
+              {/* Tab Content */}
+              {activeTab === "overview" && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+                    <Eye className="h-4 w-4" />
+                    Analysis Summary
+                  </h4>
+                  
+                  {/* Algorithm Explanation */}
+                  <div className="p-3 rounded-lg bg-muted/50 border border-border">
+                    <div className="text-xs font-medium text-foreground mb-2">How We Check:</div>
+                    <div className="space-y-1 text-[11px] text-muted-foreground">
+                      <div className="flex items-start gap-2">
+                        <span className="font-semibold text-foreground">1.</span>
+                        <span>N-gram shingling breaks text into 3-word sequences</span>
                       </div>
-                    )}
+                      <div className="flex items-start gap-2">
+                        <span className="font-semibold text-foreground">2.</span>
+                        <span>Fingerprint hashing creates unique signatures</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="font-semibold text-foreground">3.</span>
+                        <span>Sentence similarity compares against database</span>
+                      </div>
+                    </div>
                   </div>
-                ))
-              ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">
-                  No direct abstract matches. Check the Full Report for other similarities.
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <h4 className="text-sm font-medium text-foreground">Detailed Similarity Report</h4>
-              {uploadState.matches.map((project, projectIndex) => {
-                const isDuplicate = project.overallMatch >= 95;
-                
-                return (
-                  <div key={project.title} className={`rounded-lg border overflow-hidden ${
-                    isDuplicate 
-                      ? "bg-destructive/5 border-destructive/30" 
-                      : "bg-muted/50 border-border"
-                  }`}>
-                    {/* Project Header */}
-                    <div className="p-4 border-b border-border/50">
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <BookOpen className="h-4 w-4 text-muted-foreground" />
-                            <p className="text-sm font-semibold text-foreground">{project.title}</p>
-                          </div>
-                          {isDuplicate && (
-                            <p className="text-xs text-destructive font-medium mt-1 ml-6">⚠️ Duplicate Project - 100% Match</p>
-                          )}
-                        </div>
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${
-                          isDuplicate 
-                            ? "bg-destructive text-destructive-foreground" 
-                            : getMatchColor(project.overallMatch)
-                        }`}>
-                          {isDuplicate ? "100%" : `${project.overallMatch}%`} Match
-                        </span>
-                      </div>
-                      
-                      {/* Source Reference */}
-                      <div className="flex items-center gap-1.5 mt-2 ml-6">
-                        <Link2 className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-[10px] text-muted-foreground">
-                          Original Source: <span className="font-medium text-foreground">{project.title}</span> in Project Database
-                        </span>
-                      </div>
+
+                  {/* Score Breakdown */}
+                  <div className="p-3 rounded-lg bg-muted/50 border border-border">
+                    <div className="text-xs font-medium text-foreground mb-2">Score Formula:</div>
+                    <div className="text-[11px] text-muted-foreground font-mono bg-background/50 p-2 rounded">
+                      Plagiarism % = (Matched Words / Total Words) × 100
                     </div>
+                    <div className="mt-2 text-[11px] text-muted-foreground">
+                      <span className="font-medium">{report.totalWordsCopied}</span> / <span className="font-medium">{report.totalWords}</span> = <span className={`font-bold ${getScoreColor(report.overallPlagiarismScore)}`}>{report.overallPlagiarismScore}%</span>
+                    </div>
+                  </div>
 
-                    {/* Section-by-Section Breakdown */}
-                    <div className="p-4 space-y-3">
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <Layers className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-xs font-semibold text-foreground">Section-by-Section Analysis</span>
-                      </div>
+                  {/* Quick Source List */}
+                  {report.sourceProjects.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-foreground">Matched Sources:</div>
+                      {report.sourceProjects.slice(0, 3).map((source, idx) => (
+                        <div key={idx} className="p-2 rounded bg-muted/50 flex justify-between items-center">
+                          <span className="text-xs text-foreground truncate flex-1 mr-2">{source.projectTitle}</span>
+                          <Badge variant={source.matchPercentage >= 70 ? "destructive" : "secondary"} className="text-[10px]">
+                            {source.matchPercentage}%
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
-                      {project.sectionMatches.map((section, sectionIndex) => {
-                        const sectionKey = `${projectIndex}-${sectionIndex}`;
-                        const isExpanded = expandedSections[sectionKey];
-                        const hasMatches = section.matchedItems.length > 0;
-
+              {activeTab === "sentences" && (
+                <ScrollArea className="h-[300px]">
+                  <div className="space-y-2 pr-2">
+                    <h4 className="text-sm font-medium text-foreground mb-3">
+                      Matched Sentences ({report.sentenceBreakdown.length})
+                    </h4>
+                    
+                    {report.sentenceBreakdown.length === 0 ? (
+                      <p className="text-xs text-muted-foreground text-center py-4">
+                        No sentence matches found
+                      </p>
+                    ) : (
+                      report.sentenceBreakdown.map((match: SentenceMatch, idx: number) => {
+                        const isExpanded = expandedSentences.has(idx);
+                        
                         return (
                           <div 
-                            key={sectionKey}
-                            className={`rounded-lg border ${
-                              isDuplicate && section.matchPercentage >= 80 
-                                ? "border-destructive/30 bg-destructive/5" 
-                                : "border-border bg-background/50"
+                            key={idx} 
+                            className={`rounded-lg border overflow-hidden ${
+                              match.similarity >= 90 
+                                ? "bg-destructive/5 border-destructive/30" 
+                                : "bg-muted/30 border-border"
                             }`}
                           >
-                            {/* Section Header - Clickable */}
                             <button
-                              onClick={() => toggleSection(sectionKey)}
-                              className="w-full p-3 flex items-center justify-between hover:bg-muted/50 transition-colors rounded-lg"
+                              onClick={() => toggleSentence(idx)}
+                              className="w-full p-3 flex items-start justify-between text-left hover:bg-muted/50 transition-colors"
                             >
-                              <div className="flex items-center gap-2">
-                                <span className={isDuplicate ? "text-destructive" : "text-muted-foreground"}>
-                                  {getSectionIcon(section.sectionName)}
-                                </span>
-                                <span className="text-xs font-medium text-foreground">{section.sectionName}</span>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                                  isDuplicate && section.matchPercentage >= 80
-                                    ? "bg-destructive/20 text-destructive"
-                                    : "bg-muted text-muted-foreground"
-                                }`}>
-                                  {section.weight}% weight
-                                </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-[10px] text-muted-foreground">Line {match.lineNumber}</span>
+                                  {getMatchTypeBadge(
+                                    match.similarity >= 95 ? "exact" : 
+                                    match.similarity >= 80 ? "paraphrase" : "partial"
+                                  )}
+                                </div>
+                                <p className="text-xs text-foreground line-clamp-2">
+                                  "{match.uploadedSentence.slice(0, 100)}{match.uploadedSentence.length > 100 ? "..." : ""}"
+                                </p>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className={`text-xs font-bold ${
-                                  isDuplicate && section.matchPercentage >= 80
-                                    ? "text-destructive"
-                                    : section.matchPercentage >= 50 
-                                      ? "text-amber-600 dark:text-amber-400"
-                                      : "text-green-600 dark:text-green-400"
+                              <div className="flex items-center gap-2 ml-2">
+                                <span className={`text-sm font-bold ${
+                                  match.similarity >= 90 ? "text-destructive" : 
+                                  match.similarity >= 70 ? "text-amber-600" : "text-muted-foreground"
                                 }`}>
-                                  {isDuplicate ? "100%" : `${section.matchPercentage}%`}
+                                  {match.similarity}%
                                 </span>
                                 {isExpanded ? (
                                   <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -787,163 +512,124 @@ const AIAssistancePanel = () => {
                                 )}
                               </div>
                             </button>
-
-                            {/* Section Details - Expandable */}
+                            
                             {isExpanded && (
-                              <div className="px-3 pb-3 space-y-3">
-                                {/* Progress Bar */}
-                                <div className="flex items-center gap-2">
-                                  <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                                    <div 
-                                      className={`h-full rounded-full transition-all ${
-                                        isDuplicate ? "bg-destructive" : "bg-primary"
-                                      }`}
-                                      style={{ width: `${isDuplicate ? 100 : section.matchPercentage}%` }}
-                                    />
+                              <div className="px-3 pb-3 space-y-2 border-t border-border/50">
+                                <div className="pt-2">
+                                  <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium mb-1">
+                                    Your Text:
                                   </div>
-                                  <span className="text-[10px] text-muted-foreground w-16 text-right">
-                                    → {section.weightedScore}% score
-                                  </span>
+                                  <p className="text-[11px] text-foreground bg-destructive/10 p-2 rounded">
+                                    "{match.uploadedSentence}"
+                                  </p>
                                 </div>
-
-                                {/* Matched Content */}
-                                {hasMatches && (
-                                  <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[10px] font-medium text-foreground">Matched Items:</span>
-                                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                                        isDuplicate ? "bg-destructive/20 text-destructive" : "bg-primary/10 text-primary"
-                                      }`}>
-                                        {section.matchedItems.length} of {section.originalContent.length} matched
-                                      </span>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1">
-                                      {section.matchedItems.map((item, idx) => (
-                                        <span 
-                                          key={`${item}-${idx}`}
-                                          className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                            isDuplicate
-                                              ? "bg-destructive/15 text-destructive border border-destructive/30"
-                                              : "bg-primary/10 text-primary"
-                                          }`}
-                                        >
-                                          {section.sectionName.includes("Keywords") ? `#${item}` : item}
-                                        </span>
-                                      ))}
-                                    </div>
+                                <div>
+                                  <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium mb-1">
+                                    Source ({match.sourceProject}):
                                   </div>
-                                )}
-
-                                {/* Content Comparison */}
-                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border">
-                                  <div>
-                                    <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium">Your Document</span>
-                                    <div className="mt-1 p-2 bg-muted/50 rounded text-[10px] text-muted-foreground max-h-20 overflow-y-auto">
-                                      {section.uploadedContent.slice(0, 10).map((item, idx) => (
-                                        <span 
-                                          key={idx}
-                                          className={`inline-block mr-1 mb-1 ${
-                                            section.matchedItems.map(m => m.toLowerCase()).includes(item.toLowerCase())
-                                              ? isDuplicate 
-                                                ? "text-destructive font-semibold" 
-                                                : "text-primary font-semibold"
-                                              : ""
-                                          }`}
-                                        >
-                                          {item}{idx < Math.min(section.uploadedContent.length, 10) - 1 ? "," : ""}
-                                        </span>
-                                      ))}
-                                      {section.uploadedContent.length > 10 && (
-                                        <span className="text-muted-foreground/50">...+{section.uploadedContent.length - 10} more</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium">Original Source</span>
-                                    <div className="mt-1 p-2 bg-muted/50 rounded text-[10px] text-muted-foreground max-h-20 overflow-y-auto">
-                                      {section.originalContent.slice(0, 10).map((item, idx) => (
-                                        <span 
-                                          key={idx}
-                                          className={`inline-block mr-1 mb-1 ${
-                                            section.matchedItems.map(m => m.toLowerCase()).includes(item.toLowerCase())
-                                              ? isDuplicate 
-                                                ? "text-destructive font-semibold" 
-                                                : "text-primary font-semibold"
-                                              : ""
-                                          }`}
-                                        >
-                                          {item}{idx < Math.min(section.originalContent.length, 10) - 1 ? "," : ""}
-                                        </span>
-                                      ))}
-                                      {section.originalContent.length > 10 && (
-                                        <span className="text-muted-foreground/50">...+{section.originalContent.length - 10} more</span>
-                                      )}
-                                    </div>
-                                  </div>
+                                  <p className="text-[11px] text-foreground bg-muted p-2 rounded">
+                                    "{match.sourceSentence}"
+                                  </p>
                                 </div>
                               </div>
                             )}
                           </div>
                         );
-                      })}
+                      })
+                    )}
+                  </div>
+                </ScrollArea>
+              )}
 
-                      {/* Total Score Calculation */}
-                      <div className={`mt-4 p-3 rounded-lg border ${
-                        isDuplicate 
-                          ? "bg-destructive/10 border-destructive/30" 
-                          : "bg-muted border-border"
-                      }`}>
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <Calculator className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="text-xs font-semibold text-foreground">Score Calculation</span>
+              {activeTab === "sources" && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+                    <BookOpen className="h-4 w-4" />
+                    Source Breakdown ({report.sourceProjects.length})
+                  </h4>
+                  
+                  {report.sourceProjects.length === 0 ? (
+                    <div className="text-center py-6">
+                      <CheckCircle2 className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                      <p className="text-xs text-muted-foreground">
+                        No matching sources found in database
+                      </p>
+                    </div>
+                  ) : (
+                    report.sourceProjects.map((source: SourceReference, idx: number) => (
+                      <div 
+                        key={idx}
+                        className={`p-3 rounded-lg border ${
+                          source.matchPercentage >= 70 
+                            ? "bg-destructive/5 border-destructive/30" 
+                            : "bg-muted/30 border-border"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">
+                              {source.projectTitle}
+                            </p>
+                          </div>
+                          <Badge 
+                            variant={source.matchPercentage >= 70 ? "destructive" : "secondary"}
+                            className="text-xs"
+                          >
+                            {source.matchPercentage}%
+                          </Badge>
                         </div>
-                        <div className="space-y-1">
-                          {project.sectionMatches.map((section, idx) => (
-                            <div key={idx} className="flex justify-between text-[10px]">
-                              <span className="text-muted-foreground">
-                                {section.sectionName}: {isDuplicate ? "100%" : `${section.matchPercentage}%`} × {section.weight/100}
-                              </span>
-                              <span className={isDuplicate ? "text-destructive font-medium" : "text-foreground"}>
-                                = {isDuplicate ? section.weight : section.weightedScore}%
-                              </span>
-                            </div>
-                          ))}
-                          <div className={`flex justify-between text-xs pt-1 border-t ${
-                            isDuplicate ? "border-destructive/30" : "border-border"
-                          }`}>
-                            <span className="font-semibold text-foreground">Total Match</span>
-                            <span className={`font-bold ${isDuplicate ? "text-destructive" : "text-primary"}`}>
-                              = {isDuplicate ? "100%" : `${project.overallMatch}%`}
-                            </span>
+                        
+                        <div className="grid grid-cols-2 gap-2 text-center mt-2">
+                          <div className="p-1.5 bg-background/50 rounded">
+                            <div className="text-sm font-semibold text-foreground">{source.wordsCopied}</div>
+                            <div className="text-[9px] text-muted-foreground">Words</div>
+                          </div>
+                          <div className="p-1.5 bg-background/50 rounded">
+                            <div className="text-sm font-semibold text-foreground">{source.sentencesMatched}</div>
+                            <div className="text-[9px] text-muted-foreground">Sentences</div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                );
-              })}
+                    ))
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* No matches state */}
+          {report.sourceProjects.length === 0 && report.sentenceBreakdown.length === 0 && (
+            <div className="text-center py-6">
+              <CheckCircle2 className="h-10 w-10 text-green-500 mx-auto mb-3" />
+              <h4 className="text-sm font-medium text-foreground mb-1">Original Content</h4>
+              <p className="text-xs text-muted-foreground">
+                No plagiarism detected. Your document appears to be unique.
+              </p>
             </div>
           )}
         </>
-      ) : (
+      )}
+
+      {/* How it works - shown when no file */}
+      {!uploadState.file && (
         <>
           <div className="flex items-center gap-3 mb-4">
             <div className="flex-1 h-px bg-border" />
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">How it works</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Algorithm</span>
             <div className="flex-1 h-px bg-border" />
           </div>
           <div className="space-y-3 text-xs text-muted-foreground">
             <div className="flex gap-2">
               <span className="font-semibold text-foreground">1.</span>
-              <span>Upload your project document</span>
+              <span>N-gram shingling extracts text patterns</span>
             </div>
             <div className="flex gap-2">
               <span className="font-semibold text-foreground">2.</span>
-              <span>AI extracts abstract & analyzes content</span>
+              <span>Fingerprint hashing for fast comparison</span>
             </div>
             <div className="flex gap-2">
               <span className="font-semibold text-foreground">3.</span>
-              <span>Get similarity report with breakdown</span>
+              <span>Sentence-level matching identifies copied text</span>
             </div>
           </div>
         </>
