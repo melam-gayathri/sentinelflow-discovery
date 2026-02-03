@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { Upload, FileText, Sparkles, X, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, BookOpen, FileWarning, Copy, Eye } from "lucide-react";
+import { Upload, FileText, Sparkles, X, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, BookOpen, FileWarning, Copy, Eye, Layers } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -7,9 +7,9 @@ import {
   checkPlagiarism,
   getPlagiarismLevel,
   PlagiarismReport,
-  SentenceMatch,
   SourceReference,
-  PLAGIARISM_THRESHOLDS
+  PLAGIARISM_THRESHOLDS,
+  SectionScore
 } from "@/lib/plagiarismChecker";
 
 interface UploadState {
@@ -22,36 +22,59 @@ interface UploadState {
 
 const ACCEPTED_FORMATS = [".pdf", ".doc", ".docx", ".ppt", ".pptx"];
 
-// Mock project database with full text content for plagiarism checking
+// Mock project database with full content and metadata for section-based comparison
 const projectDatabase = [
   {
     title: "Intelligent Traffic Flow Optimization using Deep Learning",
-    fullText: `A comprehensive system that uses neural networks to predict and optimize traffic patterns in urban environments. The system employs CNN and RNN to analyze real-time traffic data from IoT sensors. It implements deep learning algorithms for congestion prediction and signal timing optimization. The architecture uses a hybrid CNN-LSTM model for temporal pattern recognition. Real-time data processing enables dynamic adjustment of traffic signals. The system integrates with existing smart city infrastructure through REST APIs. Machine learning models are trained on historical traffic data to improve prediction accuracy. The solution reduces average commute times by optimizing traffic flow. IoT sensors collect vehicle count and speed data at major intersections. The dashboard provides real-time visualization of traffic conditions across the city.`
+    description: "A comprehensive system that uses neural networks to predict and optimize traffic patterns in urban environments for reduced congestion.",
+    fullText: `A comprehensive system that uses neural networks to predict and optimize traffic patterns in urban environments. The system employs CNN and RNN to analyze real-time traffic data from IoT sensors. It implements deep learning algorithms for congestion prediction and signal timing optimization. The architecture uses a hybrid CNN-LSTM model for temporal pattern recognition. Real-time data processing enables dynamic adjustment of traffic signals. The system integrates with existing smart city infrastructure through REST APIs. Machine learning models are trained on historical traffic data to improve prediction accuracy. The solution reduces average commute times by optimizing traffic flow. IoT sensors collect vehicle count and speed data at major intersections. The dashboard provides real-time visualization of traffic conditions across the city.`,
+    tags: ["#DeepLearning", "#IoT", "#SmartCity", "#Python", "#TensorFlow", "#CNN", "#RNN"],
+    methodology: "Experimental quantitative research using real-time data collection, CNN-LSTM hybrid architecture, supervised learning with historical traffic patterns"
   },
   {
     title: "Blockchain-Based Supply Chain Transparency Platform",
-    fullText: `A decentralized application built on Ethereum for supply chain transparency and product tracking. The platform uses smart contracts to record every transaction and movement of goods. IPFS is utilized for storing product documentation and certificates. Manufacturers, distributors, retailers, and consumers can verify product authenticity. The system implements cryptographic verification for tamper-proof record keeping. Web3.js enables seamless interaction between the frontend and blockchain. Each product receives a unique digital identity stored on the distributed ledger. QR codes link physical products to their blockchain records. The solution eliminates counterfeit products through transparent tracking. Real-time visibility improves supply chain efficiency and trust.`
+    description: "Decentralized application enabling end-to-end tracking and verification of products through the supply chain lifecycle.",
+    fullText: `A decentralized application built on Ethereum for supply chain transparency and product tracking. The platform uses smart contracts to record every transaction and movement of goods. IPFS is utilized for storing product documentation and certificates. Manufacturers, distributors, retailers, and consumers can verify product authenticity. The system implements cryptographic verification for tamper-proof record keeping. Web3.js enables seamless interaction between the frontend and blockchain. Each product receives a unique digital identity stored on the distributed ledger. QR codes link physical products to their blockchain records. The solution eliminates counterfeit products through transparent tracking. Real-time visibility improves supply chain efficiency and trust.`,
+    tags: ["#Blockchain", "#Ethereum", "#Web3", "#Solidity", "#IPFS", "#SmartContracts"],
+    methodology: "Prototype development using decentralized architecture, smart contract implementation, distributed ledger for immutable records"
   },
   {
     title: "NLP-Powered Academic Document Analyzer",
-    fullText: `A natural language processing system for academic document analysis and summarization. The platform implements BERT and GPT models for semantic understanding of research papers. Automatic summarization condenses lengthy documents into key insights. Plagiarism detection identifies copied content through text comparison algorithms. The system uses transformer architecture for contextual embeddings. Document classification organizes papers by research domain and methodology. Citation analysis maps relationships between academic works. Named entity recognition extracts key concepts and terminology. The API provides integration with research management tools. Semantic search enables finding relevant papers based on meaning rather than keywords.`
+    description: "Natural language processing tool for extracting insights, summarizing content, and detecting plagiarism in academic documents.",
+    fullText: `A natural language processing system for academic document analysis and summarization. The platform implements BERT and GPT models for semantic understanding of research papers. Automatic summarization condenses lengthy documents into key insights. Plagiarism detection identifies copied content through text comparison algorithms. The system uses transformer architecture for contextual embeddings. Document classification organizes papers by research domain and methodology. Citation analysis maps relationships between academic works. Named entity recognition extracts key concepts and terminology. The API provides integration with research management tools. Semantic search enables finding relevant papers based on meaning rather than keywords.`,
+    tags: ["#NLP", "#BERT", "#GPT", "#Python", "#Transformers", "#MachineLearning"],
+    methodology: "Transfer learning with pre-trained transformer models, fine-tuning on academic corpus, semantic embedding analysis"
   },
   {
     title: "IoT-Enabled Smart Agriculture Monitoring",
-    fullText: `A precision farming system using IoT sensors for crop health monitoring and irrigation control. Wireless sensors measure soil moisture, nutrients, and temperature across agricultural fields. Machine learning models predict optimal irrigation and fertilization schedules. ESP32 microcontrollers collect and transmit sensor data via LoRaWAN. Random Forest and Gradient Boosting algorithms analyze environmental conditions. The dashboard displays real-time crop health metrics and alerts. Automated irrigation systems respond to sensor data to optimize water usage. Historical data analysis identifies patterns in crop growth and yield. Weather integration improves prediction accuracy for farming decisions. The solution reduces water consumption while maximizing crop productivity.`
+    description: "Real-time crop health monitoring system using wireless sensors and machine learning for precision agriculture.",
+    fullText: `A precision farming system using IoT sensors for crop health monitoring and irrigation control. Wireless sensors measure soil moisture, nutrients, and temperature across agricultural fields. Machine learning models predict optimal irrigation and fertilization schedules. ESP32 microcontrollers collect and transmit sensor data via LoRaWAN. Random Forest and Gradient Boosting algorithms analyze environmental conditions. The dashboard displays real-time crop health metrics and alerts. Automated irrigation systems respond to sensor data to optimize water usage. Historical data analysis identifies patterns in crop growth and yield. Weather integration improves prediction accuracy for farming decisions. The solution reduces water consumption while maximizing crop productivity.`,
+    tags: ["#IoT", "#MachineLearning", "#ESP32", "#LoRaWAN", "#Arduino", "#Sensors"],
+    methodology: "Experimental field deployment, quantitative sensor data analysis, supervised learning with environmental features"
   },
   {
     title: "Augmented Reality Campus Navigation App",
-    fullText: `A mobile application using augmented reality for indoor campus navigation and wayfinding. ARFoundation and Unity provide the core AR experience on iOS and Android. BLE beacons enable precise indoor positioning where GPS is unavailable. Visual landmark recognition helps users orient themselves in complex buildings. The app overlays directional arrows and building information on the camera feed. Node.js backend manages building maps and point of interest data. MongoDB stores user preferences and navigation history. Cross-platform React Native components share code between mobile platforms. Accessibility features support users with visual or mobility impairments. Integration with class schedules provides contextual navigation to upcoming lectures.`
+    description: "Mobile application providing interactive AR-based navigation and information overlay for university campus visitors.",
+    fullText: `A mobile application using augmented reality for indoor campus navigation and wayfinding. ARFoundation and Unity provide the core AR experience on iOS and Android. BLE beacons enable precise indoor positioning where GPS is unavailable. Visual landmark recognition helps users orient themselves in complex buildings. The app overlays directional arrows and building information on the camera feed. Node.js backend manages building maps and point of interest data. MongoDB stores user preferences and navigation history. Cross-platform React Native components share code between mobile platforms. Accessibility features support users with visual or mobility impairments. Integration with class schedules provides contextual navigation to upcoming lectures.`,
+    tags: ["#AR", "#Unity", "#Mobile", "#ReactNative", "#NodeJS", "#MongoDB", "#BLE"],
+    methodology: "Prototype development, indoor positioning using BLE beacons, visual landmark recognition, cross-platform mobile development"
   },
   {
     title: "Predictive Maintenance for Industrial Equipment",
-    fullText: `A machine learning system for predicting equipment failures in manufacturing environments. Vibration analysis and thermal imaging detect early signs of mechanical wear. XGBoost and neural networks process sensor data to identify failure patterns. FFT analysis transforms vibration signals into frequency domain features. The system integrates with Industry 4.0 infrastructure for real-time monitoring. Predictive models reduce unplanned downtime through proactive maintenance scheduling. CI/CD pipelines enable continuous improvement of machine learning models. Historical failure data trains algorithms to recognize pre-failure signatures. Alert systems notify maintenance teams of potential equipment issues. The dashboard provides equipment health scores and maintenance recommendations.`
+    description: "Machine learning model that predicts equipment failures before they occur, reducing downtime and maintenance costs.",
+    fullText: `A machine learning system for predicting equipment failures in manufacturing environments. Vibration analysis and thermal imaging detect early signs of mechanical wear. XGBoost and neural networks process sensor data to identify failure patterns. FFT analysis transforms vibration signals into frequency domain features. The system integrates with Industry 4.0 infrastructure for real-time monitoring. Predictive models reduce unplanned downtime through proactive maintenance scheduling. CI/CD pipelines enable continuous improvement of machine learning models. Historical failure data trains algorithms to recognize pre-failure signatures. Alert systems notify maintenance teams of potential equipment issues. The dashboard provides equipment health scores and maintenance recommendations.`,
+    tags: ["#MachineLearning", "#Industry40", "#XGBoost", "#Python", "#IoT", "#Analytics"],
+    methodology: "Supervised learning with historical failure data, FFT signal processing, ensemble methods for classification"
   }
 ];
 
 // Simulated document content extraction based on filename
-const getSimulatedDocumentText = (fileName: string): string => {
+const getSimulatedDocumentContent = (fileName: string): { 
+  text: string; 
+  tags: string[];
+  title: string;
+  methodology?: string;
+} => {
   const name = fileName.toLowerCase();
   
   // Keyword triggers for exact matches
@@ -66,7 +89,13 @@ const getSimulatedDocumentText = (fileName: string): string => {
   
   for (const [keyword, index] of Object.entries(triggers)) {
     if (name.includes(keyword.replace(/-/g, "")) || name.includes(keyword)) {
-      return projectDatabase[index].fullText;
+      const project = projectDatabase[index];
+      return {
+        text: project.fullText,
+        tags: project.tags,
+        title: project.title,
+        methodology: project.methodology
+      };
     }
   }
   
@@ -75,12 +104,21 @@ const getSimulatedDocumentText = (fileName: string): string => {
     const titleWords = project.title.toLowerCase().split(/\s+/).filter(w => w.length > 4);
     const matchCount = titleWords.filter(word => name.includes(word)).length;
     if (matchCount >= 2) {
-      return project.fullText;
+      return {
+        text: project.fullText,
+        tags: project.tags,
+        title: project.title,
+        methodology: project.methodology
+      };
     }
   }
   
   // Return unique content for unknown files
-  return `This is a unique research project focusing on novel approaches and methodologies. The implementation uses custom algorithms developed specifically for this application. Original data collection methods ensure the authenticity of results. The system architecture was designed from scratch without referencing existing solutions. All code and documentation are original works created for this submission.`;
+  return {
+    text: `This is a unique research project focusing on novel approaches and methodologies. The implementation uses custom algorithms developed specifically for this application. Original data collection methods ensure the authenticity of results. The system architecture was designed from scratch without referencing existing solutions. All code and documentation are original works created for this submission.`,
+    tags: ["#Novel", "#Original", "#Research"],
+    title: fileName.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ")
+  };
 };
 
 const AIAssistancePanel = () => {
@@ -92,12 +130,12 @@ const AIAssistancePanel = () => {
     report: null
   });
   const [isDragging, setIsDragging] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "sentences" | "sources">("overview");
-  const [expandedSentences, setExpandedSentences] = useState<Set<number>>(new Set());
+  const [activeTab, setActiveTab] = useState<"overview" | "sections" | "sources">("overview");
+  const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const toggleSentence = (index: number) => {
-    setExpandedSentences(prev => {
+  const toggleSource = (index: number) => {
+    setExpandedSources(prev => {
       const next = new Set(prev);
       if (next.has(index)) {
         next.delete(index);
@@ -109,14 +147,22 @@ const AIAssistancePanel = () => {
   };
 
   const analyzeDocument = useCallback((file: File) => {
-    const documentText = getSimulatedDocumentText(file.name);
-    const report = checkPlagiarism(documentText, projectDatabase);
+    const content = getSimulatedDocumentContent(file.name);
+    const report = checkPlagiarism(
+      content.text, 
+      projectDatabase,
+      {
+        title: content.title,
+        tags: content.tags,
+        methodology: content.methodology
+      }
+    );
     return report;
   }, []);
 
   const simulateAnalysis = useCallback((file: File) => {
     setUploadState(prev => ({ ...prev, uploading: true, progress: 0 }));
-    setExpandedSentences(new Set());
+    setExpandedSources(new Set());
 
     const progressInterval = setInterval(() => {
       setUploadState(prev => {
@@ -183,7 +229,7 @@ const AIAssistancePanel = () => {
       analyzed: false,
       report: null
     });
-    setExpandedSentences(new Set());
+    setExpandedSources(new Set());
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -199,15 +245,26 @@ const AIAssistancePanel = () => {
     return "bg-green-100 dark:bg-green-900/20";
   };
 
-  const getMatchTypeBadge = (type: "exact" | "paraphrase" | "partial") => {
-    switch (type) {
-      case "exact":
-        return <Badge variant="destructive" className="text-[10px]">Exact</Badge>;
-      case "paraphrase":
-        return <Badge className="bg-amber-500 text-[10px]">Paraphrase</Badge>;
-      default:
-        return <Badge variant="secondary" className="text-[10px]">Partial</Badge>;
-    }
+  const getSectionLabel = (section: string) => {
+    const labels: Record<string, string> = {
+      title: "Title",
+      abstract: "Abstract",
+      technologies: "Technologies",
+      keywords: "Keywords",
+      methodology: "Methodology"
+    };
+    return labels[section] || section;
+  };
+
+  const getSectionWeight = (section: string) => {
+    const weights: Record<string, string> = {
+      title: "15%",
+      abstract: "35%",
+      technologies: "25%",
+      keywords: "15%",
+      methodology: "10%"
+    };
+    return weights[section] || "0%";
   };
 
   const { report } = uploadState;
@@ -264,10 +321,10 @@ const AIAssistancePanel = () => {
             <div className="space-y-2">
               <Progress value={uploadState.progress} className="h-2" />
               <p className="text-xs text-muted-foreground">
-                {uploadState.progress < 30 ? "Extracting text content..." :
-                 uploadState.progress < 60 ? "Generating n-gram shingles..." :
-                 uploadState.progress < 85 ? "Comparing fingerprints..." :
-                 "Analyzing sentence matches..."}
+                {uploadState.progress < 30 ? "Extracting sections..." :
+                 uploadState.progress < 60 ? "Analyzing technologies & keywords..." :
+                 uploadState.progress < 85 ? "Comparing abstracts semantically..." :
+                 "Calculating section scores..."}
               </p>
             </div>
           )}
@@ -281,11 +338,18 @@ const AIAssistancePanel = () => {
                     Duplicate Document Detected!
                   </span>
                 </>
+              ) : report.isDifferentTechnology ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <span className="text-green-600 dark:text-green-400">
+                    Different technology approach
+                  </span>
+                </>
               ) : report.overallPlagiarismScore >= PLAGIARISM_THRESHOLDS.HIGH_SIMILARITY ? (
                 <>
                   <FileWarning className="h-4 w-4 text-destructive" />
                   <span className="text-destructive font-medium">
-                    High plagiarism detected
+                    High similarity detected
                   </span>
                 </>
               ) : report.overallPlagiarismScore >= PLAGIARISM_THRESHOLDS.MODERATE ? (
@@ -316,7 +380,7 @@ const AIAssistancePanel = () => {
               : getScoreBgColor(report.overallPlagiarismScore) + " border-border"
           }`}>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-foreground">Plagiarism Score</span>
+              <span className="text-sm font-medium text-foreground">Similarity Score</span>
               <span className={`text-2xl font-bold ${getScoreColor(report.overallPlagiarismScore)}`}>
                 {report.overallPlagiarismScore}%
               </span>
@@ -346,13 +410,22 @@ const AIAssistancePanel = () => {
                 <div className={`text-lg font-bold ${getScoreColor(report.overallPlagiarismScore)}`}>
                   {report.totalWordsCopied}
                 </div>
-                <div className="text-[10px] text-muted-foreground">Words Matched</div>
+                <div className="text-[10px] text-muted-foreground">Estimated Match</div>
               </div>
               <div className="p-2 bg-background/50 rounded">
                 <div className="text-lg font-bold text-foreground">{report.sourceProjects.length}</div>
                 <div className="text-[10px] text-muted-foreground">Sources Found</div>
               </div>
             </div>
+
+            {/* Technology Differentiation Notice */}
+            {report.isDifferentTechnology && (
+              <div className="mt-3 p-2 bg-green-100/50 dark:bg-green-900/20 rounded text-center">
+                <p className="text-[11px] text-green-700 dark:text-green-400">
+                  ✓ Uses different technologies than similar projects
+                </p>
+              </div>
+            )}
 
             {/* Status Badge */}
             {plagiarismLevel && (
@@ -374,7 +447,7 @@ const AIAssistancePanel = () => {
           </div>
 
           {/* Tab Navigation */}
-          {(report.sourceProjects.length > 0 || report.sentenceBreakdown.length > 0) && (
+          {(report.sourceProjects.length > 0 || report.matches.length > 0) && (
             <>
               <div className="flex gap-1 mb-4 p-1 bg-muted rounded-lg">
                 <button
@@ -386,12 +459,12 @@ const AIAssistancePanel = () => {
                   Overview
                 </button>
                 <button
-                  onClick={() => setActiveTab("sentences")}
+                  onClick={() => setActiveTab("sections")}
                   className={`flex-1 text-xs font-medium py-2 px-2 rounded-md transition-colors ${
-                    activeTab === "sentences" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    activeTab === "sections" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  Matches
+                  Sections
                 </button>
                 <button
                   onClick={() => setActiveTab("sources")}
@@ -408,134 +481,126 @@ const AIAssistancePanel = () => {
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
                     <Eye className="h-4 w-4" />
-                    Analysis Summary
+                    Analysis Method
                   </h4>
                   
                   {/* Algorithm Explanation */}
                   <div className="p-3 rounded-lg bg-muted/50 border border-border">
-                    <div className="text-xs font-medium text-foreground mb-2">How We Check:</div>
+                    <div className="text-xs font-medium text-foreground mb-2">Section-Based Comparison:</div>
                     <div className="space-y-1 text-[11px] text-muted-foreground">
                       <div className="flex items-start gap-2">
-                        <span className="font-semibold text-foreground">1.</span>
-                        <span>N-gram shingling breaks text into 3-word sequences</span>
+                        <span className="font-semibold text-foreground">•</span>
+                        <span>Compares Title, Abstract, Technologies, Keywords, Methodology</span>
                       </div>
                       <div className="flex items-start gap-2">
-                        <span className="font-semibold text-foreground">2.</span>
-                        <span>Fingerprint hashing creates unique signatures</span>
+                        <span className="font-semibold text-foreground">•</span>
+                        <span>Semantic meaning over word-level matching</span>
                       </div>
                       <div className="flex items-start gap-2">
-                        <span className="font-semibold text-foreground">3.</span>
-                        <span>Sentence similarity compares against database</span>
+                        <span className="font-semibold text-foreground">•</span>
+                        <span>Different tech = different project (even if similar problem)</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Score Breakdown */}
+                  {/* Section Weights */}
                   <div className="p-3 rounded-lg bg-muted/50 border border-border">
-                    <div className="text-xs font-medium text-foreground mb-2">Score Formula:</div>
-                    <div className="text-[11px] text-muted-foreground font-mono bg-background/50 p-2 rounded">
-                      Plagiarism % = (Matched Words / Total Words) × 100
-                    </div>
-                    <div className="mt-2 text-[11px] text-muted-foreground">
-                      <span className="font-medium">{report.totalWordsCopied}</span> / <span className="font-medium">{report.totalWords}</span> = <span className={`font-bold ${getScoreColor(report.overallPlagiarismScore)}`}>{report.overallPlagiarismScore}%</span>
-                    </div>
-                  </div>
-
-                  {/* Quick Source List */}
-                  {report.sourceProjects.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-medium text-foreground">Matched Sources:</div>
-                      {report.sourceProjects.slice(0, 3).map((source, idx) => (
-                        <div key={idx} className="p-2 rounded bg-muted/50 flex justify-between items-center">
-                          <span className="text-xs text-foreground truncate flex-1 mr-2">{source.projectTitle}</span>
-                          <Badge variant={source.matchPercentage >= 70 ? "destructive" : "secondary"} className="text-[10px]">
-                            {source.matchPercentage}%
-                          </Badge>
+                    <div className="text-xs font-medium text-foreground mb-2">Section Weights:</div>
+                    <div className="grid grid-cols-5 gap-1 text-center">
+                      {["title", "abstract", "technologies", "keywords", "methodology"].map(section => (
+                        <div key={section} className="p-1.5 bg-background/50 rounded">
+                          <div className="text-[10px] font-medium text-foreground">{getSectionWeight(section)}</div>
+                          <div className="text-[8px] text-muted-foreground capitalize">{section.slice(0, 4)}</div>
                         </div>
                       ))}
                     </div>
-                  )}
+                  </div>
+
+                  {/* Key Differentiators */}
+                  <div className="p-3 rounded-lg bg-muted/50 border border-border">
+                    <div className="text-xs font-medium text-foreground mb-2">Key Rules:</div>
+                    <div className="space-y-1 text-[11px] text-muted-foreground">
+                      <div className="flex items-start gap-2">
+                        <span className="text-green-500">✓</span>
+                        <span>Same problem + different tech = <strong>different project</strong></span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-green-500">✓</span>
+                        <span>Same tech + different abstract = <strong>different project</strong></span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-destructive">✗</span>
+                        <span>Same abstract + same tech = <strong>potential plagiarism</strong></span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {activeTab === "sentences" && (
+              {activeTab === "sections" && (
                 <ScrollArea className="h-[300px]">
-                  <div className="space-y-2 pr-2">
-                    <h4 className="text-sm font-medium text-foreground mb-3">
-                      Matched Sentences ({report.sentenceBreakdown.length})
+                  <div className="space-y-3 pr-2">
+                    <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+                      <Layers className="h-4 w-4" />
+                      Section Breakdown
                     </h4>
                     
-                    {report.sentenceBreakdown.length === 0 ? (
+                    {report.sourceProjects.length === 0 ? (
                       <p className="text-xs text-muted-foreground text-center py-4">
-                        No sentence matches found
+                        No similar sections found
                       </p>
                     ) : (
-                      report.sentenceBreakdown.map((match: SentenceMatch, idx: number) => {
-                        const isExpanded = expandedSentences.has(idx);
-                        
-                        return (
-                          <div 
-                            key={idx} 
-                            className={`rounded-lg border overflow-hidden ${
-                              match.similarity >= 90 
-                                ? "bg-destructive/5 border-destructive/30" 
-                                : "bg-muted/30 border-border"
-                            }`}
-                          >
-                            <button
-                              onClick={() => toggleSentence(idx)}
-                              className="w-full p-3 flex items-start justify-between text-left hover:bg-muted/50 transition-colors"
+                      report.sourceProjects.map((source: SourceReference, idx: number) => (
+                        <div 
+                          key={idx}
+                          className="rounded-lg border bg-muted/30 border-border overflow-hidden"
+                        >
+                          <div className="p-3 border-b border-border/50">
+                            <p className="text-xs font-medium text-foreground truncate mb-1">
+                              vs. {source.projectTitle}
+                            </p>
+                            <Badge 
+                              variant={source.matchPercentage >= 70 ? "destructive" : "secondary"}
+                              className="text-[10px]"
                             >
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-[10px] text-muted-foreground">Line {match.lineNumber}</span>
-                                  {getMatchTypeBadge(
-                                    match.similarity >= 95 ? "exact" : 
-                                    match.similarity >= 80 ? "paraphrase" : "partial"
-                                  )}
-                                </div>
-                                <p className="text-xs text-foreground line-clamp-2">
-                                  "{match.uploadedSentence.slice(0, 100)}{match.uploadedSentence.length > 100 ? "..." : ""}"
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2 ml-2">
-                                <span className={`text-sm font-bold ${
-                                  match.similarity >= 90 ? "text-destructive" : 
-                                  match.similarity >= 70 ? "text-amber-600" : "text-muted-foreground"
-                                }`}>
-                                  {match.similarity}%
-                                </span>
-                                {isExpanded ? (
-                                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                                ) : (
-                                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                )}
-                              </div>
-                            </button>
-                            
-                            {isExpanded && (
-                              <div className="px-3 pb-3 space-y-2 border-t border-border/50">
-                                <div className="pt-2">
-                                  <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium mb-1">
-                                    Your Text:
-                                  </div>
-                                  <p className="text-[11px] text-foreground bg-destructive/10 p-2 rounded">
-                                    "{match.uploadedSentence}"
-                                  </p>
-                                </div>
-                                <div>
-                                  <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium mb-1">
-                                    Source ({match.sourceProject}):
-                                  </div>
-                                  <p className="text-[11px] text-foreground bg-muted p-2 rounded">
-                                    "{match.sourceSentence}"
-                                  </p>
-                                </div>
-                              </div>
-                            )}
+                              {source.matchPercentage}% overall
+                            </Badge>
                           </div>
-                        );
-                      })
+                          
+                          {source.sectionScores && (
+                            <div className="p-2 space-y-1.5">
+                              {source.sectionScores.map((section: SectionScore, sIdx: number) => (
+                                <div key={sIdx} className="flex items-center gap-2">
+                                  <span className="text-[10px] text-muted-foreground w-20 capitalize">
+                                    {getSectionLabel(section.section)}
+                                  </span>
+                                  <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                    <div 
+                                      className={`h-full ${
+                                        section.similarity >= 70 
+                                          ? "bg-destructive" 
+                                          : section.similarity >= 40 
+                                            ? "bg-amber-500" 
+                                            : "bg-green-500"
+                                      }`}
+                                      style={{ width: `${section.similarity}%` }}
+                                    />
+                                  </div>
+                                  <span className={`text-[10px] font-medium w-10 text-right ${
+                                    section.similarity >= 70 
+                                      ? "text-destructive" 
+                                      : section.similarity >= 40 
+                                        ? "text-amber-600" 
+                                        : "text-green-600"
+                                  }`}>
+                                    {section.similarity}%
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))
                     )}
                   </div>
                 </ScrollArea>
@@ -545,7 +610,7 @@ const AIAssistancePanel = () => {
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
                     <BookOpen className="h-4 w-4" />
-                    Source Breakdown ({report.sourceProjects.length})
+                    Source Projects ({report.sourceProjects.length})
                   </h4>
                   
                   {report.sourceProjects.length === 0 ? (
@@ -556,41 +621,75 @@ const AIAssistancePanel = () => {
                       </p>
                     </div>
                   ) : (
-                    report.sourceProjects.map((source: SourceReference, idx: number) => (
-                      <div 
-                        key={idx}
-                        className={`p-3 rounded-lg border ${
-                          source.matchPercentage >= 70 
-                            ? "bg-destructive/5 border-destructive/30" 
-                            : "bg-muted/30 border-border"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground truncate">
-                              {source.projectTitle}
-                            </p>
-                          </div>
-                          <Badge 
-                            variant={source.matchPercentage >= 70 ? "destructive" : "secondary"}
-                            className="text-xs"
+                    report.sourceProjects.map((source: SourceReference, idx: number) => {
+                      const isExpanded = expandedSources.has(idx);
+                      
+                      return (
+                        <div 
+                          key={idx}
+                          className={`rounded-lg border overflow-hidden ${
+                            source.matchPercentage >= 70 
+                              ? "bg-destructive/5 border-destructive/30" 
+                              : "bg-muted/30 border-border"
+                          }`}
+                        >
+                          <button
+                            onClick={() => toggleSource(idx)}
+                            className="w-full p-3 flex items-start justify-between text-left hover:bg-muted/50 transition-colors"
                           >
-                            {source.matchPercentage}%
-                          </Badge>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">
+                                {source.projectTitle}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                Click to view section details
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 ml-2">
+                              <Badge 
+                                variant={source.matchPercentage >= 70 ? "destructive" : "secondary"}
+                                className="text-xs"
+                              >
+                                {source.matchPercentage}%
+                              </Badge>
+                              {isExpanded ? (
+                                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                              )}
+                            </div>
+                          </button>
+                          
+                          {isExpanded && source.sectionScores && (
+                            <div className="px-3 pb-3 border-t border-border/50">
+                              <div className="pt-2 space-y-2">
+                                {source.sectionScores.map((section: SectionScore, sIdx: number) => (
+                                  <div key={sIdx} className="p-2 bg-background/50 rounded">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-[11px] font-medium text-foreground capitalize">
+                                        {getSectionLabel(section.section)}
+                                      </span>
+                                      <span className={`text-[11px] font-bold ${
+                                        section.similarity >= 70 
+                                          ? "text-destructive" 
+                                          : section.similarity >= 40 
+                                            ? "text-amber-600" 
+                                            : "text-green-600"
+                                      }`}>
+                                        {section.similarity}%
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground">
+                                      {section.details}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        
-                        <div className="grid grid-cols-2 gap-2 text-center mt-2">
-                          <div className="p-1.5 bg-background/50 rounded">
-                            <div className="text-sm font-semibold text-foreground">{source.wordsCopied}</div>
-                            <div className="text-[9px] text-muted-foreground">Words</div>
-                          </div>
-                          <div className="p-1.5 bg-background/50 rounded">
-                            <div className="text-sm font-semibold text-foreground">{source.sentencesMatched}</div>
-                            <div className="text-[9px] text-muted-foreground">Sentences</div>
-                          </div>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               )}
@@ -598,12 +697,12 @@ const AIAssistancePanel = () => {
           )}
 
           {/* No matches state */}
-          {report.sourceProjects.length === 0 && report.sentenceBreakdown.length === 0 && (
+          {report.sourceProjects.length === 0 && report.matches.length === 0 && (
             <div className="text-center py-6">
               <CheckCircle2 className="h-10 w-10 text-green-500 mx-auto mb-3" />
               <h4 className="text-sm font-medium text-foreground mb-1">Original Content</h4>
               <p className="text-xs text-muted-foreground">
-                No plagiarism detected. Your document appears to be unique.
+                No similar projects detected. Your document appears to be unique.
               </p>
             </div>
           )}
@@ -615,21 +714,21 @@ const AIAssistancePanel = () => {
         <>
           <div className="flex items-center gap-3 mb-4">
             <div className="flex-1 h-px bg-border" />
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">Algorithm</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Method</span>
             <div className="flex-1 h-px bg-border" />
           </div>
           <div className="space-y-3 text-xs text-muted-foreground">
             <div className="flex gap-2">
               <span className="font-semibold text-foreground">1.</span>
-              <span>N-gram shingling extracts text patterns</span>
+              <span>Compares sections: Title, Abstract, Technologies, Keywords</span>
             </div>
             <div className="flex gap-2">
               <span className="font-semibold text-foreground">2.</span>
-              <span>Fingerprint hashing for fast comparison</span>
+              <span>Semantic comparison (meaning, not word-by-word)</span>
             </div>
             <div className="flex gap-2">
               <span className="font-semibold text-foreground">3.</span>
-              <span>Sentence-level matching identifies copied text</span>
+              <span>Different tech stack = different project</span>
             </div>
           </div>
         </>

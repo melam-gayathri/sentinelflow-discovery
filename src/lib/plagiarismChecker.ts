@@ -1,7 +1,15 @@
 // Plagiarism Detection Algorithm
-// Uses N-gram shingling, fingerprint hashing, and sentence-level matching
+// Section-based semantic comparison: Title, Abstract, Technologies, Keywords, Methodology
 
 // ============= Type Definitions =============
+
+export interface SectionScore {
+  section: "title" | "abstract" | "technologies" | "keywords" | "methodology";
+  similarity: number;
+  weight: number;
+  weightedScore: number;
+  details: string;
+}
 
 export interface PlagiarismMatch {
   matchedText: string;
@@ -25,6 +33,7 @@ export interface SourceReference {
   matchPercentage: number;
   wordsCopied: number;
   sentencesMatched: number;
+  sectionScores: SectionScore[];
 }
 
 export interface PlagiarismReport {
@@ -36,330 +45,491 @@ export interface PlagiarismReport {
   sentenceBreakdown: SentenceMatch[];
   sourceProjects: SourceReference[];
   isExactDuplicate: boolean;
+  isDifferentTechnology: boolean;
 }
 
-// ============= Stopwords =============
+// ============= Section Weights =============
+// These weights determine how much each section contributes to similarity
 
-const STOPWORDS = new Set([
-  "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
-  "of", "with", "by", "from", "as", "is", "was", "are", "were", "been",
-  "be", "have", "has", "had", "do", "does", "did", "will", "would", "could",
-  "should", "may", "might", "can", "this", "that", "these", "those", "it",
-  "its", "if", "then", "than", "so", "such", "no", "not", "only", "own",
-  "same", "too", "very", "just", "also", "now", "our", "your", "their",
-  "which", "who", "whom", "what", "when", "where", "why", "how", "all",
-  "each", "every", "both", "few", "more", "most", "other", "some", "any",
-  "into", "through", "during", "before", "after", "above", "below", "between",
-  "under", "again", "further", "once", "here", "there", "about", "out", "over",
-  "up", "down", "off", "being", "using", "used"
+const SECTION_WEIGHTS = {
+  title: 0.15,        // 15% - Title similarity
+  abstract: 0.35,     // 35% - Abstract/description is key differentiator
+  technologies: 0.25, // 25% - Different tech = different project
+  keywords: 0.15,     // 15% - Domain keywords
+  methodology: 0.10   // 10% - Implementation approach
+};
+
+// ============= Technology Keywords =============
+// Common technology terms to extract from text
+
+const TECHNOLOGY_KEYWORDS = new Set([
+  // Programming Languages
+  "python", "javascript", "typescript", "java", "c++", "c#", "ruby", "go", "rust", "swift", "kotlin", "php", "scala", "r",
+  // ML/AI Frameworks
+  "tensorflow", "pytorch", "keras", "scikit-learn", "sklearn", "opencv", "nltk", "spacy", "huggingface", "transformers",
+  // Web Frameworks
+  "react", "angular", "vue", "nextjs", "express", "django", "flask", "fastapi", "spring", "rails", "laravel",
+  // Databases
+  "mongodb", "postgresql", "mysql", "redis", "elasticsearch", "firebase", "supabase", "dynamodb", "cassandra",
+  // Cloud/DevOps
+  "aws", "azure", "gcp", "docker", "kubernetes", "terraform", "jenkins", "github", "gitlab", "ci/cd",
+  // Technologies
+  "blockchain", "ethereum", "solidity", "web3", "ipfs", "iot", "mqtt", "raspberry", "arduino",
+  "machine-learning", "deep-learning", "neural-network", "cnn", "rnn", "lstm", "transformer", "bert", "gpt",
+  "nlp", "computer-vision", "reinforcement-learning", "gan", "vae",
+  "rest", "graphql", "grpc", "websocket", "mqtt",
+  "unity", "unreal", "ar", "vr", "arkit", "arcore",
+  // Data Science
+  "pandas", "numpy", "scipy", "matplotlib", "seaborn", "tableau", "powerbi",
+  // Mobile
+  "android", "ios", "flutter", "react-native", "xamarin"
 ]);
 
-// ============= Text Preprocessing =============
+// ============= Methodology Keywords =============
+
+const METHODOLOGY_KEYWORDS = new Set([
+  // Research Methods
+  "experimental", "quantitative", "qualitative", "survey", "case-study", "prototype",
+  "simulation", "modeling", "optimization", "analysis", "evaluation", "comparison",
+  // Development Approaches
+  "agile", "waterfall", "scrum", "tdd", "bdd", "devops", "microservices", "monolithic",
+  // ML Approaches
+  "supervised", "unsupervised", "semi-supervised", "transfer-learning", "fine-tuning",
+  "classification", "regression", "clustering", "detection", "segmentation", "prediction",
+  // Architecture
+  "client-server", "peer-to-peer", "distributed", "centralized", "decentralized",
+  "real-time", "batch", "streaming", "event-driven"
+]);
+
+// ============= Text Processing =============
 
 export function normalizeText(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\w\s]/g, " ") // Remove punctuation
-    .replace(/\s+/g, " ") // Normalize whitespace
+    .replace(/[^\w\s-]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
-export function tokenizeIntoWords(text: string): string[] {
-  return normalizeText(text).split(" ").filter(word => word.length > 0);
+export function extractWords(text: string): string[] {
+  return normalizeText(text).split(" ").filter(w => w.length > 2);
 }
 
-export function removeStopwords(words: string[]): string[] {
-  return words.filter(word => !STOPWORDS.has(word) && word.length > 2);
-}
-
-export function tokenizeIntoSentences(text: string): string[] {
-  // Split on sentence-ending punctuation while preserving meaning
-  return text
-    .replace(/([.!?])\s+/g, "$1|SPLIT|")
-    .split("|SPLIT|")
-    .map(s => s.trim())
-    .filter(s => s.length > 10); // Filter out very short fragments
-}
-
-// ============= N-Gram Shingling =============
-
-export function generateShingles(text: string, n: number = 3): string[] {
-  const words = removeStopwords(tokenizeIntoWords(text));
-  if (words.length < n) return [words.join(" ")];
+export function extractKeyPhrases(text: string): string[] {
+  // Extract meaningful phrases (2-4 word combinations) for semantic comparison
+  const normalized = normalizeText(text);
+  const words = normalized.split(" ").filter(w => w.length > 2);
   
-  const shingles: string[] = [];
-  for (let i = 0; i <= words.length - n; i++) {
-    shingles.push(words.slice(i, i + n).join(" "));
+  const phrases: string[] = [];
+  
+  // Single important words
+  words.forEach(w => {
+    if (w.length > 4) phrases.push(w);
+  });
+  
+  // Bi-grams
+  for (let i = 0; i < words.length - 1; i++) {
+    phrases.push(`${words[i]} ${words[i + 1]}`);
   }
-  return shingles;
+  
+  return [...new Set(phrases)];
 }
 
-// ============= Fingerprint Hashing =============
-
-export function hashShingle(shingle: string): number {
-  // Simple hash function for shingle fingerprinting
-  let hash = 0;
-  for (let i = 0; i < shingle.length; i++) {
-    const char = shingle.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return Math.abs(hash);
-}
-
-export function generateFingerprints(shingles: string[]): Set<number> {
-  return new Set(shingles.map(hashShingle));
-}
-
-export function compareFingerprints(
-  uploadedHashes: Set<number>,
-  sourceHashes: Set<number>
-): { matchCount: number; matchPercentage: number } {
-  const intersection = [...uploadedHashes].filter(h => sourceHashes.has(h));
-  const unionSize = new Set([...uploadedHashes, ...sourceHashes]).size;
+export function extractTechnologies(text: string): Set<string> {
+  const normalized = normalizeText(text);
+  const words = normalized.split(" ");
+  const found = new Set<string>();
   
-  return {
-    matchCount: intersection.length,
-    matchPercentage: unionSize > 0 ? (intersection.length / unionSize) * 100 : 0
-  };
-}
-
-// ============= Sentence-Level Matching =============
-
-export function calculateSentenceSimilarity(sentence1: string, sentence2: string): number {
-  const words1 = removeStopwords(tokenizeIntoWords(sentence1));
-  const words2 = removeStopwords(tokenizeIntoWords(sentence2));
-  
-  if (words1.length === 0 || words2.length === 0) return 0;
-  
-  const set1 = new Set(words1);
-  const set2 = new Set(words2);
-  
-  const intersection = [...set1].filter(w => set2.has(w)).length;
-  const union = new Set([...set1, ...set2]).size;
-  
-  // Jaccard similarity
-  const jaccardScore = union > 0 ? (intersection / union) * 100 : 0;
-  
-  // Also consider word order with a simple positional bonus
-  let orderBonus = 0;
-  const minLen = Math.min(words1.length, words2.length);
-  for (let i = 0; i < minLen; i++) {
-    if (words1[i] === words2[i]) orderBonus += 5;
-  }
-  orderBonus = Math.min(orderBonus, 20); // Cap order bonus at 20%
-  
-  return Math.min(100, jaccardScore + orderBonus);
-}
-
-export function findMatchingSentences(
-  uploadedSentences: string[],
-  sourceSentences: string[],
-  sourceProject: string,
-  threshold: number = 60
-): SentenceMatch[] {
-  const matches: SentenceMatch[] = [];
-  
-  uploadedSentences.forEach((uploadedSentence, lineNum) => {
-    let bestMatch: SentenceMatch | null = null;
-    
-    sourceSentences.forEach(sourceSentence => {
-      const similarity = calculateSentenceSimilarity(uploadedSentence, sourceSentence);
-      
-      if (similarity >= threshold) {
-        if (!bestMatch || similarity > bestMatch.similarity) {
-          bestMatch = {
-            uploadedSentence,
-            sourceSentence,
-            sourceProject,
-            similarity: Math.round(similarity),
-            lineNumber: lineNum + 1
-          };
-        }
-      }
-    });
-    
-    if (bestMatch) {
-      matches.push(bestMatch);
+  words.forEach(word => {
+    if (TECHNOLOGY_KEYWORDS.has(word)) {
+      found.add(word);
     }
   });
   
-  return matches;
+  // Also check for compound terms
+  const compoundTerms = [
+    "deep learning", "machine learning", "neural network", "computer vision",
+    "natural language", "reinforcement learning", "transfer learning",
+    "real time", "real-time"
+  ];
+  
+  compoundTerms.forEach(term => {
+    if (normalized.includes(term)) {
+      found.add(term.replace(" ", "-"));
+    }
+  });
+  
+  return found;
 }
 
-// ============= Longest Common Subsequence =============
+export function extractMethodology(text: string): Set<string> {
+  const normalized = normalizeText(text);
+  const words = normalized.split(" ");
+  const found = new Set<string>();
+  
+  words.forEach(word => {
+    if (METHODOLOGY_KEYWORDS.has(word)) {
+      found.add(word);
+    }
+  });
+  
+  return found;
+}
 
-export function findLCS(text1: string, text2: string): string {
-  const words1 = tokenizeIntoWords(text1);
-  const words2 = tokenizeIntoWords(text2);
+export function extractKeywords(tags: string[]): Set<string> {
+  return new Set(
+    tags.map(tag => 
+      tag.toLowerCase()
+        .replace(/^#/, "")
+        .replace(/[^\w-]/g, "")
+    )
+  );
+}
+
+// ============= Semantic Similarity Functions =============
+
+/**
+ * Calculate Jaccard similarity between two sets
+ */
+function jaccardSimilarity(set1: Set<string>, set2: Set<string>): number {
+  if (set1.size === 0 && set2.size === 0) return 0;
   
-  const m = words1.length;
-  const n = words2.length;
+  const intersection = new Set([...set1].filter(x => set2.has(x)));
+  const union = new Set([...set1, ...set2]);
   
-  // Create DP table
-  const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+  return union.size > 0 ? (intersection.size / union.size) * 100 : 0;
+}
+
+/**
+ * Calculate semantic similarity between two texts based on key phrases
+ * This compares overall meaning, not individual words
+ */
+function semanticTextSimilarity(text1: string, text2: string): number {
+  const phrases1 = new Set(extractKeyPhrases(text1));
+  const phrases2 = new Set(extractKeyPhrases(text2));
   
-  // Fill DP table
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (words1[i - 1] === words2[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
+  // If either text is empty, return 0
+  if (phrases1.size === 0 || phrases2.size === 0) return 0;
+  
+  // Calculate overlap of key phrases
+  const intersection = [...phrases1].filter(p => phrases2.has(p));
+  const union = new Set([...phrases1, ...phrases2]);
+  
+  // Base Jaccard score
+  const jaccardScore = (intersection.length / union.size) * 100;
+  
+  // Bonus for matching longer phrases (indicates structural similarity)
+  let structureBonus = 0;
+  intersection.forEach(phrase => {
+    if (phrase.includes(" ")) {
+      structureBonus += 5; // Bonus for multi-word phrase matches
     }
-  }
+  });
+  structureBonus = Math.min(structureBonus, 20);
   
-  // Backtrack to find LCS
-  const lcs: string[] = [];
-  let i = m, j = n;
-  while (i > 0 && j > 0) {
-    if (words1[i - 1] === words2[j - 1]) {
-      lcs.unshift(words1[i - 1]);
-      i--;
-      j--;
-    } else if (dp[i - 1][j] > dp[i][j - 1]) {
-      i--;
-    } else {
-      j--;
-    }
-  }
+  return Math.min(100, jaccardScore + structureBonus);
+}
+
+/**
+ * Calculate title similarity
+ */
+function calculateTitleSimilarity(title1: string, title2: string): number {
+  const words1 = new Set(extractWords(title1).filter(w => w.length > 3));
+  const words2 = new Set(extractWords(title2).filter(w => w.length > 3));
   
-  return lcs.join(" ");
+  return jaccardSimilarity(words1, words2);
+}
+
+// ============= Section-Based Comparison =============
+
+interface ProjectSection {
+  title: string;
+  abstract: string;
+  technologies: Set<string>;
+  keywords: Set<string>;
+  methodology: Set<string>;
+}
+
+function extractProjectSections(
+  title: string,
+  description: string,
+  fullDescription: string,
+  tags: string[],
+  methodology?: string
+): ProjectSection {
+  const fullText = `${description} ${fullDescription} ${methodology || ""}`;
+  
+  return {
+    title,
+    abstract: fullDescription || description,
+    technologies: extractTechnologies(fullText),
+    keywords: extractKeywords(tags),
+    methodology: extractMethodology(fullText + " " + (methodology || ""))
+  };
+}
+
+function compareSections(
+  uploaded: ProjectSection,
+  source: ProjectSection
+): SectionScore[] {
+  const scores: SectionScore[] = [];
+  
+  // Title comparison
+  const titleSim = calculateTitleSimilarity(uploaded.title, source.title);
+  scores.push({
+    section: "title",
+    similarity: Math.round(titleSim),
+    weight: SECTION_WEIGHTS.title,
+    weightedScore: titleSim * SECTION_WEIGHTS.title,
+    details: `Title words overlap: ${Math.round(titleSim)}%`
+  });
+  
+  // Abstract comparison (semantic, not word-level)
+  const abstractSim = semanticTextSimilarity(uploaded.abstract, source.abstract);
+  scores.push({
+    section: "abstract",
+    similarity: Math.round(abstractSim),
+    weight: SECTION_WEIGHTS.abstract,
+    weightedScore: abstractSim * SECTION_WEIGHTS.abstract,
+    details: `Abstract semantic similarity: ${Math.round(abstractSim)}%`
+  });
+  
+  // Technologies comparison (CRITICAL - different tech = different project)
+  const techSim = jaccardSimilarity(uploaded.technologies, source.technologies);
+  scores.push({
+    section: "technologies",
+    similarity: Math.round(techSim),
+    weight: SECTION_WEIGHTS.technologies,
+    weightedScore: techSim * SECTION_WEIGHTS.technologies,
+    details: `Technologies match: ${[...uploaded.technologies].filter(t => source.technologies.has(t)).join(", ") || "None"}`
+  });
+  
+  // Keywords comparison
+  const keywordSim = jaccardSimilarity(uploaded.keywords, source.keywords);
+  scores.push({
+    section: "keywords",
+    similarity: Math.round(keywordSim),
+    weight: SECTION_WEIGHTS.keywords,
+    weightedScore: keywordSim * SECTION_WEIGHTS.keywords,
+    details: `Keywords overlap: ${Math.round(keywordSim)}%`
+  });
+  
+  // Methodology comparison
+  const methodSim = jaccardSimilarity(uploaded.methodology, source.methodology);
+  scores.push({
+    section: "methodology",
+    similarity: Math.round(methodSim),
+    weight: SECTION_WEIGHTS.methodology,
+    weightedScore: methodSim * SECTION_WEIGHTS.methodology,
+    details: `Methodology approach: ${Math.round(methodSim)}%`
+  });
+  
+  return scores;
 }
 
 // ============= Main Plagiarism Check =============
 
 interface ProjectContent {
   title: string;
+  description?: string;
   fullText: string;
+  tags?: string[];
+  methodology?: string;
 }
 
 export function checkPlagiarism(
   uploadedText: string,
-  projectDatabase: ProjectContent[]
+  projectDatabase: ProjectContent[],
+  uploadedMetadata?: {
+    title?: string;
+    tags?: string[];
+    methodology?: string;
+  }
 ): PlagiarismReport {
-  const uploadedSentences = tokenizeIntoSentences(uploadedText);
-  const uploadedShingles = generateShingles(uploadedText, 3);
-  const uploadedFingerprints = generateFingerprints(uploadedShingles);
-  const uploadedWords = tokenizeIntoWords(uploadedText);
-  const totalWords = uploadedWords.length;
+  // Extract sections from uploaded document
+  const uploadedTitle = uploadedMetadata?.title || extractTitleFromText(uploadedText);
+  const uploadedTags = uploadedMetadata?.tags || [];
+  
+  const uploadedSections = extractProjectSections(
+    uploadedTitle,
+    uploadedText.substring(0, 200),
+    uploadedText,
+    uploadedTags,
+    uploadedMetadata?.methodology
+  );
   
   const allMatches: PlagiarismMatch[] = [];
   const allSentenceMatches: SentenceMatch[] = [];
-  const sourceRefs: Map<string, SourceReference> = new Map();
+  const sourceRefs: SourceReference[] = [];
   
   let isExactDuplicate = false;
-  let maxOverallMatch = 0;
+  let isDifferentTechnology = false;
+  let maxOverallScore = 0;
+  
+  const uploadedWords = extractWords(uploadedText);
+  const totalWords = uploadedWords.length;
   
   // Compare against each project in database
   for (const project of projectDatabase) {
-    const sourceShingles = generateShingles(project.fullText, 3);
-    const sourceFingerprints = generateFingerprints(sourceShingles);
-    const sourceSentences = tokenizeIntoSentences(project.fullText);
-    
-    // Fingerprint comparison for overall similarity
-    const fingerprintResult = compareFingerprints(uploadedFingerprints, sourceFingerprints);
-    
-    // Sentence-level matching
-    const sentenceMatches = findMatchingSentences(
-      uploadedSentences,
-      sourceSentences,
+    const sourceSections = extractProjectSections(
       project.title,
-      60
+      project.description || "",
+      project.fullText,
+      project.tags || [],
+      project.methodology
     );
     
-    allSentenceMatches.push(...sentenceMatches);
+    // Compare all sections
+    const sectionScores = compareSections(uploadedSections, sourceSections);
     
-    // Check for exact duplicate (>95% fingerprint match OR >95% sentences match)
-    const sentenceMatchRatio = uploadedSentences.length > 0 
-      ? (sentenceMatches.length / uploadedSentences.length) * 100 
-      : 0;
+    // Calculate weighted overall score
+    const overallScore = sectionScores.reduce((sum, s) => sum + s.weightedScore, 0);
     
-    const highSimilaritySentences = sentenceMatches.filter(m => m.similarity >= 90);
-    const exactMatchRatio = uploadedSentences.length > 0
-      ? (highSimilaritySentences.length / uploadedSentences.length) * 100
-      : 0;
+    // Check for technology differentiation
+    const techScore = sectionScores.find(s => s.section === "technologies");
+    const abstractScore = sectionScores.find(s => s.section === "abstract");
+    const titleScore = sectionScores.find(s => s.section === "title");
     
-    if (fingerprintResult.matchPercentage >= 95 || exactMatchRatio >= 95) {
+    // If technologies are significantly different (<30%), treat as different project
+    // even if problem statement is similar
+    if (techScore && techScore.similarity < 30 && titleScore && titleScore.similarity > 50) {
+      isDifferentTechnology = true;
+    }
+    
+    // Determine if this is an exact duplicate
+    // All sections must be highly similar (>90% weighted average)
+    if (overallScore >= 90 && techScore && techScore.similarity >= 80) {
       isExactDuplicate = true;
     }
     
-    // Calculate words copied based on matched sentences
-    let wordsCopied = 0;
-    sentenceMatches.forEach(match => {
-      wordsCopied += tokenizeIntoWords(match.uploadedSentence).length;
-    });
+    // Only count as plagiarism if BOTH abstract AND technologies match
+    // Different abstract with same tech = different implementation
+    // Same abstract with different tech = different project
+    const effectiveScore = calculateEffectiveScore(sectionScores);
     
-    // Create source reference
-    if (sentenceMatches.length > 0 || fingerprintResult.matchPercentage > 20) {
-      const matchPercentage = Math.max(
-        fingerprintResult.matchPercentage,
-        sentenceMatchRatio
-      );
-      
-      if (matchPercentage > maxOverallMatch) {
-        maxOverallMatch = matchPercentage;
+    if (effectiveScore > 20) {
+      if (effectiveScore > maxOverallScore) {
+        maxOverallScore = effectiveScore;
       }
       
-      sourceRefs.set(project.title, {
+      // Estimate words "copied" based on abstract similarity
+      const wordsCopied = Math.round(totalWords * (effectiveScore / 100));
+      
+      sourceRefs.push({
         projectTitle: project.title,
-        matchPercentage: Math.round(matchPercentage),
+        matchPercentage: Math.round(effectiveScore),
         wordsCopied,
-        sentencesMatched: sentenceMatches.length
+        sentencesMatched: Math.round(effectiveScore / 10),
+        sectionScores
       });
-    }
-    
-    // Create phrase-level matches for high-similarity sentences
-    sentenceMatches
-      .filter(m => m.similarity >= 80)
-      .forEach(match => {
-        const matchType: "exact" | "paraphrase" | "partial" = 
-          match.similarity >= 95 ? "exact" :
-          match.similarity >= 80 ? "paraphrase" : "partial";
-        
-        allMatches.push({
-          matchedText: match.uploadedSentence,
-          sourceProject: project.title,
-          sourceLocation: `Sentence match`,
-          uploadedLocation: `Line ${match.lineNumber}`,
-          similarity: match.similarity,
-          matchType
+      
+      // Create match entries for high-similarity sections
+      sectionScores
+        .filter(s => s.similarity >= 60)
+        .forEach(s => {
+          const matchType: "exact" | "paraphrase" | "partial" = 
+            s.similarity >= 90 ? "exact" :
+            s.similarity >= 70 ? "paraphrase" : "partial";
+          
+          allMatches.push({
+            matchedText: `${s.section.charAt(0).toUpperCase() + s.section.slice(1)} section`,
+            sourceProject: project.title,
+            sourceLocation: s.section,
+            uploadedLocation: s.section,
+            similarity: s.similarity,
+            matchType
+          });
         });
-      });
+    }
   }
   
-  // Calculate overall plagiarism score
-  const totalWordsCopied = allSentenceMatches.reduce(
-    (sum, match) => sum + tokenizeIntoWords(match.uploadedSentence).length,
-    0
-  );
+  // Calculate final plagiarism score
+  let overallPlagiarismScore = Math.round(maxOverallScore);
   
-  // Avoid counting duplicate words
-  const uniqueCopiedWords = Math.min(totalWordsCopied, totalWords);
+  // If technologies are completely different, cap the plagiarism score
+  if (isDifferentTechnology) {
+    overallPlagiarismScore = Math.min(overallPlagiarismScore, 40);
+  }
   
-  let overallPlagiarismScore = totalWords > 0 
-    ? Math.round((uniqueCopiedWords / totalWords) * 100) 
-    : 0;
-  
-  // If exact duplicate detected, force 100%
+  // If exact duplicate, set to 100%
   if (isExactDuplicate) {
     overallPlagiarismScore = 100;
   }
   
-  // Cap at 100%
   overallPlagiarismScore = Math.min(100, overallPlagiarismScore);
   
   return {
     overallPlagiarismScore,
     originalContentScore: 100 - overallPlagiarismScore,
-    totalWordsCopied: uniqueCopiedWords,
+    totalWordsCopied: Math.round(totalWords * (overallPlagiarismScore / 100)),
     totalWords,
     matches: allMatches.sort((a, b) => b.similarity - a.similarity),
-    sentenceBreakdown: allSentenceMatches.sort((a, b) => b.similarity - a.similarity),
-    sourceProjects: Array.from(sourceRefs.values()).sort((a, b) => b.matchPercentage - a.matchPercentage),
-    isExactDuplicate
+    sentenceBreakdown: allSentenceMatches,
+    sourceProjects: sourceRefs.sort((a, b) => b.matchPercentage - a.matchPercentage),
+    isExactDuplicate,
+    isDifferentTechnology
   };
+}
+
+/**
+ * Calculate effective similarity score based on section interactions
+ * Different technologies with same abstract = low score
+ * Same technologies with different abstract = low score
+ * Both similar = high score
+ */
+function calculateEffectiveScore(sectionScores: SectionScore[]): number {
+  const tech = sectionScores.find(s => s.section === "technologies")?.similarity || 0;
+  const abstract = sectionScores.find(s => s.section === "abstract")?.similarity || 0;
+  const title = sectionScores.find(s => s.section === "title")?.similarity || 0;
+  const keywords = sectionScores.find(s => s.section === "keywords")?.similarity || 0;
+  const method = sectionScores.find(s => s.section === "methodology")?.similarity || 0;
+  
+  // If technologies are very different (<30%), significantly reduce score
+  if (tech < 30) {
+    return Math.min(40, (title * 0.3 + abstract * 0.3 + keywords * 0.2 + method * 0.2));
+  }
+  
+  // If abstract is very different (<30%), significantly reduce score
+  if (abstract < 30) {
+    return Math.min(40, (title * 0.3 + tech * 0.3 + keywords * 0.2 + method * 0.2));
+  }
+  
+  // Both abstract and tech are similar - use weighted average
+  return (
+    title * SECTION_WEIGHTS.title +
+    abstract * SECTION_WEIGHTS.abstract +
+    tech * SECTION_WEIGHTS.technologies +
+    keywords * SECTION_WEIGHTS.keywords +
+    method * SECTION_WEIGHTS.methodology
+  ) * 100 / (
+    SECTION_WEIGHTS.title +
+    SECTION_WEIGHTS.abstract +
+    SECTION_WEIGHTS.technologies +
+    SECTION_WEIGHTS.keywords +
+    SECTION_WEIGHTS.methodology
+  );
+}
+
+/**
+ * Extract a title from the beginning of text
+ */
+function extractTitleFromText(text: string): string {
+  const firstLine = text.split(/[.!?\n]/)[0];
+  return firstLine.substring(0, 100);
+}
+
+// ============= Tokenization (for backward compatibility) =============
+
+export function tokenizeIntoSentences(text: string): string[] {
+  return text
+    .replace(/([.!?])\s+/g, "$1|SPLIT|")
+    .split("|SPLIT|")
+    .map(s => s.trim())
+    .filter(s => s.length > 10);
+}
+
+export function tokenizeIntoWords(text: string): string[] {
+  return extractWords(text);
 }
 
 // ============= Threshold Configuration =============
@@ -381,7 +551,7 @@ export function getPlagiarismLevel(score: number): {
     return { level: "duplicate", label: "Duplicate Content", color: "destructive" };
   }
   if (score >= PLAGIARISM_THRESHOLDS.HIGH_SIMILARITY) {
-    return { level: "high", label: "High Plagiarism", color: "destructive" };
+    return { level: "high", label: "High Similarity", color: "destructive" };
   }
   if (score >= PLAGIARISM_THRESHOLDS.MODERATE) {
     return { level: "moderate", label: "Moderate Similarity", color: "warning" };
